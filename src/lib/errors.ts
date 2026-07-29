@@ -1,0 +1,51 @@
+import type { FastifyReply } from 'fastify';
+
+export type ErrorCode =
+  | 'INVALID_INPUT'
+  | 'SESSION_NOT_FOUND'
+  | 'SESSION_STOPPED'
+  | 'CLAUDE_AUTH_ERROR'
+  | 'STREAM_ERROR'
+  // Extensions beyond the spec's 5 named codes: durable-write failure (distinct from
+  // STREAM_ERROR's SSE-transport scope) and a generic catch-all.
+  | 'PERSIST_FAILED'
+  | 'INTERNAL_ERROR';
+
+const STATUS_BY_CODE: Record<ErrorCode, number> = {
+  INVALID_INPUT: 400,
+  SESSION_NOT_FOUND: 404,
+  SESSION_STOPPED: 409,
+  CLAUDE_AUTH_ERROR: 401,
+  STREAM_ERROR: 500,
+  PERSIST_FAILED: 500,
+  INTERNAL_ERROR: 500,
+};
+
+export class AppError extends Error {
+  readonly code: ErrorCode;
+  readonly statusCode: number;
+  readonly details?: unknown;
+
+  constructor(code: ErrorCode, message: string, details?: unknown) {
+    super(message);
+    this.name = 'AppError';
+    this.code = code;
+    this.statusCode = STATUS_BY_CODE[code];
+    this.details = details;
+  }
+}
+
+export function errorBody(code: ErrorCode, message: string, details?: unknown) {
+  return {
+    error: {
+      code,
+      message,
+      details,
+      timestamp: new Date().toISOString(),
+    },
+  };
+}
+
+export function sendError(reply: FastifyReply, err: AppError): void {
+  reply.code(err.statusCode).send(errorBody(err.code, err.message, err.details));
+}

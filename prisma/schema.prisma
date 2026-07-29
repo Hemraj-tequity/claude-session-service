@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum SessionStatus {
+  running
+  stopped
+  error
+}
+
+enum HistoryRole {
+  user
+  assistant
+}
+
+model Session {
+  sessionId      String        @id @map("session_id") @db.Uuid
+  status         SessionStatus @default(running)
+  // Whether the Agent SDK has acked our sessionId via a `system` init message.
+  // Drives fresh-spawn (options.sessionId) vs resume-spawn (options.resume) on (re)spawn.
+  sdkStarted     Boolean       @default(false) @map("sdk_started")
+  lastActivityAt DateTime?     @map("last_activity_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+
+  history     SessionHistory[]
+  transcripts SessionTranscript[]
+
+  @@map("sessions")
+}
+
+model SessionHistory {
+  id        Int         @id @default(autoincrement())
+  sessionId String      @map("session_id") @db.Uuid
+  role      HistoryRole
+  content   String      @db.Text
+  createdAt DateTime    @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [sessionId])
+
+  @@index([sessionId])
+  @@map("session_history")
+}
+
+model SessionTranscript {
+  id        Int      @id @default(autoincrement())
+  sessionId String   @map("session_id") @db.Uuid
+  // "root" for the main agent stream, or the SDK's parent_tool_use_id for nested/sub-agent activity.
+  subpath   String   @default("root")
+  sequence  Int
+  // system_init | chunk | tool_use | tool_result | result | error
+  eventType String   @map("event_type")
+  entry     Json
+  createdAt DateTime @default(now()) @map("created_at")
+
+  session Session @relation(fields: [sessionId], references: [sessionId])
+
+  @@index([sessionId])
+  @@index([sessionId, sequence])
+  @@map("session_transcripts")
+}
