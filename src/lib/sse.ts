@@ -13,7 +13,6 @@ export function startSse(reply: FastifyReply): void {
     'Content-Type': 'text/event-stream',
     'Cache-Control': 'no-cache, no-transform',
     Connection: 'keep-alive',
-    // Prevents an nginx-fronted deployment from buffering the stream.
     'X-Accel-Buffering': 'no',
   });
 }

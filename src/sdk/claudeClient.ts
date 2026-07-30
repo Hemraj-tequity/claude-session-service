@@ -28,21 +28,12 @@ export function spawnQuery(
       // small and matches the spec's "expand deliberately per deployment" intent.
       tools: config.allowedTools,
       allowedTools: config.allowedTools,
-      disallowedTools: config.disallowedTools,
-      systemPrompt: config.systemPrompt,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
-      // SDK-side transcript persistence at ~/.claude/projects/<cwd>/<sessionId>.jsonl,
       // which our Postgres-native `resume` mode relies on for same-host continuity.
       persistSession: true,
       // Token-level stream_event messages, mapped to SSE `chunk` events.
       includePartialMessages: true,
-      // Optional safety net against a runaway session (operator opt-in via
-      // SESSION_MAX_BUDGET_USD, unset by default). The SDK enforces this
-      // per-turn, after the turn completes rather than pre-flight.
-      ...(config.sessionMaxBudgetUsd !== undefined
-        ? { maxBudgetUsd: config.sessionMaxBudgetUsd }
-        : {}),
     },
   });
 }

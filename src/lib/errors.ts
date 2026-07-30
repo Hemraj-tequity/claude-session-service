@@ -6,8 +6,6 @@ export type ErrorCode =
   | 'SESSION_STOPPED'
   | 'CLAUDE_AUTH_ERROR'
   | 'STREAM_ERROR'
-  // Extensions beyond the spec's 5 named codes: durable-write failure (distinct from
-  // STREAM_ERROR's SSE-transport scope) and a generic catch-all.
   | 'PERSIST_FAILED'
   | 'INTERNAL_ERROR';
 
