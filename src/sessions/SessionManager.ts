@@ -42,7 +42,7 @@ function armHeartbeat(session: ActiveSession): void {
   if (!session.currentReader || session.isGenerating) return;
   session.heartbeatTimer = setInterval(() => {
     if (session.currentReader) writeHeartbeat(session.currentReader);
-  }, config.sseHeartbeatMs);
+  }, 15000);
 }
 
 function clearIdleTimer(session: ActiveSession): void {
@@ -52,14 +52,14 @@ function clearIdleTimer(session: ActiveSession): void {
   }
 }
 
-function armIdleTimer(session: ActiveSession): void {
-  clearIdleTimer(session);
-  session.idleTimer = setTimeout(() => evict(session.sessionId), config.sessionIdleEvictMs);
-}
+// function armIdleTimer(session: ActiveSession): void {
+//   clearIdleTimer(session);
+//   session.idleTimer = setTimeout(() => evict(session.sessionId), config.sessionIdleEvictMs);
+// }
 
 function touch(session: ActiveSession): void {
   session.lastActivityAt = Date.now();
-  armIdleTimer(session);
+  // armIdleTimer(session);
 }
 
 /**
@@ -178,7 +178,7 @@ async function ensureLive(sessionId: string): Promise<ActiveSession> {
   }
 
   session.query = spawnQuery(sessionId, mode, session.inputQueue);
-  armIdleTimer(session);
+  // armIdleTimer(session);
   void pumpMessages(session, mode === 'fresh');
 
   return session;

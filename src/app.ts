@@ -10,10 +10,6 @@ import { sessionRoutes } from './routes/v1/sessions.js';
 export async function buildApp(): Promise<FastifyInstance> {
   const app = Fastify({ loggerInstance: logger as unknown as FastifyBaseLogger });
 
-  if (config.corsOrigin) {
-    await app.register(cors, { origin: config.corsOrigin });
-  }
-
   app.setErrorHandler((err: FastifyError | AppError | ZodError, request, reply) => {
     if (err instanceof AppError) {
       sendError(reply, err);
