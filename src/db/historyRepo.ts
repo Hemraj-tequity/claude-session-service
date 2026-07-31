@@ -21,9 +21,3 @@ export async function insertMessage(
   );
 }
 
-export async function listBySession(sessionId: string): Promise<HistoryRow[]> {
-  return prisma.sessionHistory.findMany({
-    where: { sessionId },
-    orderBy: { id: 'asc' },
-  });
-}

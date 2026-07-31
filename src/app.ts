@@ -1,7 +1,5 @@
 import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstance } from 'fastify';
-import cors from '@fastify/cors';
 import { ZodError, treeifyError } from 'zod';
-import { config } from './config/env.js';
 import { logger } from './lib/logger.js';
 import { AppError, errorBody, sendError } from './lib/errors.js';
 import { healthRoutes } from './routes/health.js';
