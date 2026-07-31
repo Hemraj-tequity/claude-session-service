@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from 'vitest';
 
 vi.mock('dotenv/config', () => ({}));
 
@@ -20,8 +20,8 @@ async function loadConfigWith(env: Record<string, string | undefined>) {
 }
 
 describe('config/env', () => {
-  let exitSpy: ReturnType<typeof vi.spyOn>;
-  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let exitSpy: MockInstance<(code?: number) => never>;
+  let errorSpy: MockInstance<(...args: unknown[]) => void>;
 
   beforeEach(() => {
     exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {

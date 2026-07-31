@@ -15,6 +15,20 @@ vi.mock('../../config/env.js', () => ({
 
 import { spawnQuery, isAuthError } from '../claudeClient.js';
 
+interface QueryCallArgs {
+  prompt: AsyncIterable<unknown>;
+  options: {
+    sessionId?: string;
+    resume?: string;
+    tools?: string[];
+    allowedTools?: string[];
+    permissionMode?: string;
+    allowDangerouslySkipPermissions?: boolean;
+    persistSession?: boolean;
+    includePartialMessages?: boolean;
+  };
+}
+
 describe('spawnQuery', () => {
   beforeEach(() => {
     queryMock.mockClear();
@@ -25,7 +39,7 @@ describe('spawnQuery', () => {
     spawnQuery('session-1', 'fresh', prompt);
 
     expect(queryMock).toHaveBeenCalledTimes(1);
-    const [[call]] = queryMock.mock.calls;
+    const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
     expect(call.prompt).toBe(prompt);
     expect(call.options.sessionId).toBe('session-1');
     expect(call.options.resume).toBeUndefined();
@@ -35,7 +49,7 @@ describe('spawnQuery', () => {
     const prompt = (async function* () {})();
     spawnQuery('session-2', 'resume', prompt);
 
-    const [[call]] = queryMock.mock.calls;
+    const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
     expect(call.options.resume).toBe('session-2');
     expect(call.options.sessionId).toBeUndefined();
   });
@@ -44,7 +58,7 @@ describe('spawnQuery', () => {
     const prompt = (async function* () {})();
     spawnQuery('session-3', 'fresh', prompt);
 
-    const [[call]] = queryMock.mock.calls;
+    const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
     expect(call.options.tools).toEqual(['Read', 'Grep']);
     expect(call.options.allowedTools).toEqual(['Read', 'Grep']);
   });
@@ -53,7 +67,7 @@ describe('spawnQuery', () => {
     const prompt = (async function* () {})();
     spawnQuery('session-4', 'fresh', prompt);
 
-    const [[call]] = queryMock.mock.calls;
+    const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
     expect(call.options.permissionMode).toBe('bypassPermissions');
     expect(call.options.allowDangerouslySkipPermissions).toBe(true);
     expect(call.options.persistSession).toBe(true);

@@ -59,7 +59,7 @@ describe('startup/authCheck', () => {
 
     it('exits with code 1 when the Claude CLI is not on PATH', async () => {
       spawnSyncMock.mockReturnValue({ error: new Error('ENOENT'), status: null });
-      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
+      const _exitSpy = vi.spyOn(process, 'exit').mockImplementation(((code?: number) => {
         throw new Error(`exit(${code})`);
       }) as never);
 

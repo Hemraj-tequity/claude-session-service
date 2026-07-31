@@ -79,7 +79,7 @@ describe('buildApp', () => {
       const res = await app.inject({ method: 'POST', url: '/api/v1/sessions' });
 
       expect(res.statusCode).toBe(400);
-      const body = res.json();
+      const body = res.json<{ error: { code: string; message: string; details?: unknown } }>();
       expect(body.error.code).toBe('INVALID_INPUT');
       expect(body.error.message).toBe('Malformed request body');
       expect(body.error.details).toBeDefined();

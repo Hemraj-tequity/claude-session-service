@@ -92,6 +92,6 @@ describe('healthRoutes', () => {
     vi.advanceTimersByTime(5000);
 
     const res = await app.inject({ method: 'GET', url: '/health' });
-    expect(res.json().uptimeSeconds).toBe(5);
+    expect(res.json<{ uptimeSeconds: number }>().uptimeSeconds).toBe(5);
   });
 });

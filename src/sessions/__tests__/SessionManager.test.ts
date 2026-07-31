@@ -53,7 +53,7 @@ vi.mock('../../lib/sse.js', async () => {
   };
 });
 
-type Action = { msg: unknown } | { error: unknown } | { done: true };
+type Action = { msg: unknown } | { error: Error } | { done: true };
 
 function createFakeQuery() {
   const buffer: Action[] = [];
@@ -99,22 +99,22 @@ function createFakeQuery() {
     close,
     interrupt,
     push: (msg: unknown) => deliver({ msg }),
-    fail: (error: unknown) => deliver({ error }),
+    fail: (error: Error) => deliver({ error }),
     end: () => deliver({ done: true }),
   };
 }
 
 function fakeReply() {
   const closeHandlers: Array<() => void> = [];
+  const once = vi.fn((event: string, cb: () => void) => {
+    if (event === 'close') closeHandlers.push(cb);
+  });
   const reply = {
-    raw: {
-      once: vi.fn((event: string, cb: () => void) => {
-        if (event === 'close') closeHandlers.push(cb);
-      }),
-    },
+    raw: { once },
     triggerClose: () => closeHandlers.forEach((cb) => cb()),
+    onceMock: once,
   };
-  return reply as unknown as FastifyReply & { triggerClose: () => void };
+  return reply as unknown as FastifyReply & { triggerClose: () => void; onceMock: typeof once };
 }
 
 function runningRow(overrides: Partial<{ sdkStarted: boolean; status: string }> = {}) {
@@ -431,7 +431,7 @@ describe('SessionManager', () => {
 
       expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything());
       expect(startSseMock).toHaveBeenCalledWith(reply);
-      expect(reply.raw.once).toHaveBeenCalledWith('close', expect.any(Function));
+      expect(reply.onceMock).toHaveBeenCalledWith('close', expect.any(Function));
     });
 
     it('closes out the previous reader when a new attach takes over the stream', async () => {
@@ -451,7 +451,7 @@ describe('SessionManager', () => {
 
       expect(writeSseMock).toHaveBeenCalledWith(
         firstReader,
-        expect.objectContaining({ type: 'error', content: expect.stringContaining('attached from elsewhere') }),
+        expect.objectContaining({ type: 'error', content: expect.stringContaining('attached from elsewhere') as string }),
       );
       expect(endSseMock).toHaveBeenCalledWith(firstReader);
     });
@@ -483,7 +483,7 @@ describe('SessionManager', () => {
         const fq = createFakeQuery();
         spawnQueryMock.mockReturnValue(fq.query);
 
-        const reply = fakeReply() as FastifyReply & { triggerClose: () => void };
+        const reply = fakeReply();
         await attach('s1', reply);
         reply.triggerClose();
 
@@ -501,7 +501,7 @@ describe('SessionManager', () => {
       const fq = createFakeQuery();
       spawnQueryMock.mockReturnValue(fq.query);
 
-      const firstReader = fakeReply() as FastifyReply & { triggerClose: () => void };
+      const firstReader = fakeReply();
       await attach('s1', firstReader);
       firstReader.triggerClose();
 
