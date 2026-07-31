@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { FastifyReply } from 'fastify';
 import type { SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
-import { config } from '../config/env.js';
 import { logger } from '../lib/logger.js';
 import { AppError, type ErrorCode } from '../lib/errors.js';
 import { startSse, writeSse, writeHeartbeat, endSse, makeSseEvent } from '../lib/sse.js';
@@ -22,7 +21,6 @@ function createShell(sessionId: string): ActiveSession {
     inputQueue: new PushQueue<SDKUserMessage>(),
     currentReader: null,
     heartbeatTimer: null,
-    idleTimer: null,
     isGenerating: false,
     turnDone: null,
     seq: 0,
@@ -45,36 +43,8 @@ function armHeartbeat(session: ActiveSession): void {
   }, 15000);
 }
 
-function clearIdleTimer(session: ActiveSession): void {
-  if (session.idleTimer) {
-    clearTimeout(session.idleTimer);
-    session.idleTimer = null;
-  }
-}
-
-// function armIdleTimer(session: ActiveSession): void {
-//   clearIdleTimer(session);
-//   session.idleTimer = setTimeout(() => evict(session.sessionId), config.sessionIdleEvictMs);
-// }
-
 function touch(session: ActiveSession): void {
   session.lastActivityAt = Date.now();
-  // armIdleTimer(session);
-}
-
-/**
- * Idle-eviction: closes the OS subprocess to free resources, but leaves DB
- * status as 'running' -- eviction is a pure in-memory optimization, invisible
- * to the API contract except for a small resume latency on the next access.
- */
-function evict(sessionId: string): void {
-  const session = activeSessions.get(sessionId);
-  if (!session) return;
-  if (session.isGenerating || session.currentReader) return; // no longer idle, a later touch() will reschedule
-
-  logger.info({ sessionId }, 'Evicting idle session from memory');
-  session.query?.close();
-  activeSessions.delete(sessionId);
 }
 
 /** Takes over the single SSE slot for a session, closing whatever was previously attached. */
@@ -141,7 +111,6 @@ async function terminateWithError(session: ActiveSession, code: ErrorCode, messa
     session.currentReader = null;
   }
   clearHeartbeat(session);
-  clearIdleTimer(session);
   session.query?.close();
   activeSessions.delete(session.sessionId);
 
@@ -156,8 +125,7 @@ async function terminateWithError(session: ActiveSession, code: ErrorCode, messa
  * Returns the live ActiveSession for sessionId, spawning or resuming the
  * underlying Agent SDK subprocess if it isn't already resident in memory.
  * Spawn mode is driven by the DB's `sdkStarted` flag (not an in-memory flag),
- * so resurrection is correct across our own service restarts, not just
- * idle-eviction within one process.
+ * so resurrection is correct across our own service restarts.
  */
 async function ensureLive(sessionId: string): Promise<ActiveSession> {
   const existing = activeSessions.get(sessionId);
@@ -178,7 +146,6 @@ async function ensureLive(sessionId: string): Promise<ActiveSession> {
   }
 
   session.query = spawnQuery(sessionId, mode, session.inputQueue);
-  // armIdleTimer(session);
   void pumpMessages(session, mode === 'fresh');
 
   return session;
@@ -263,7 +230,6 @@ export async function stop(sessionId: string): Promise<{ session_id: string; sta
   const session = activeSessions.get(sessionId);
   if (session) {
     clearHeartbeat(session);
-    clearIdleTimer(session);
     if (session.isGenerating) {
       await session.query?.interrupt().catch(() => {});
     }

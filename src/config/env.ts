@@ -35,4 +35,3 @@ function loadConfig() {
 }
 
 export const config = loadConfig();
-export type Config = typeof config;

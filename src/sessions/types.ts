@@ -43,7 +43,6 @@ export interface ActiveSession {
   inputQueue: PushQueue<SDKUserMessage>;
   currentReader: FastifyReply | null;
   heartbeatTimer: NodeJS.Timeout | null;
-  idleTimer: NodeJS.Timeout | null;
   isGenerating: boolean;
   turnDone: Deferred | null;
   /** Next transcript sequence number; seeded from DB max(sequence)+1 on resurrect. */
