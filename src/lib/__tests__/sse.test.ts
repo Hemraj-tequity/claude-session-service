@@ -14,16 +14,17 @@ function makeReply(overrides: Partial<{ write: () => boolean; end: () => void }>
     write: vi.fn(overrides.write ?? (() => true)),
     end: vi.fn(overrides.end ?? (() => undefined)),
   };
-  const reply = { hijack: vi.fn(), raw } as unknown as FastifyReply;
-  return { reply, raw };
+  const hijack = vi.fn();
+  const reply = { hijack, raw } as unknown as FastifyReply;
+  return { reply, raw, hijack };
 }
 
 describe('startSse', () => {
   it('hijacks the reply and writes SSE headers', () => {
-    const { reply, raw } = makeReply();
+    const { reply, raw, hijack } = makeReply();
     startSse(reply);
 
-    expect(reply.hijack).toHaveBeenCalledTimes(1);
+    expect(hijack).toHaveBeenCalledTimes(1);
     expect(raw.writeHead).toHaveBeenCalledWith(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache, no-transform',

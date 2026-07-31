@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import Fastify from 'fastify';
+import Fastify, { type FastifyReply } from 'fastify';
 
 const { createSessionMock, submitInputMock, attachMock, stopMock } = vi.hoisted(() => ({
   createSessionMock: vi.fn(),
@@ -29,10 +29,10 @@ const VALID_UUID = '123e4567-e89b-12d3-a456-426614174000';
 describe('sessionRoutes', () => {
   beforeEach(() => {
     createSessionMock.mockReset();
-    submitInputMock.mockReset().mockImplementation(async (_id, _content, reply) => {
+    submitInputMock.mockReset().mockImplementation((_id: string, _content: string, reply: FastifyReply) => {
       reply.send({ streamed: true });
     });
-    attachMock.mockReset().mockImplementation(async (_id, reply) => {
+    attachMock.mockReset().mockImplementation((_id: string, reply: FastifyReply) => {
       reply.send({ attached: true });
     });
     stopMock.mockReset();

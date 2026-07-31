@@ -76,7 +76,7 @@ describe('sendError', () => {
         code: 'CLAUDE_AUTH_ERROR',
         message: 'auth failed',
         details: { hint: 'login' },
-        timestamp: expect.any(String),
+        timestamp: expect.any(String) as string,
       },
     });
   });

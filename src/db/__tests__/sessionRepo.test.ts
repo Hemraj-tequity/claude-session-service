@@ -81,7 +81,7 @@ describe('sessionRepo', () => {
       await touchLastActivity('s1');
 
       expect(updateMock).toHaveBeenCalledTimes(1);
-      const [[arg]] = updateMock.mock.calls;
+      const [[arg]] = updateMock.mock.calls as [[{ where: { sessionId: string }; data: { lastActivityAt: Date } }]];
       expect(arg.where).toEqual({ sessionId: 's1' });
       expect(arg.data.lastActivityAt).toBeInstanceOf(Date);
     });

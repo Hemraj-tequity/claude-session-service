@@ -12,7 +12,7 @@ const sessionIdParamSchema = {
   },
 } as const;
 
-export async function sessionRoutes(app: FastifyInstance): Promise<void> {
+export function sessionRoutes(app: FastifyInstance): void {
   app.post('/sessions', async (_request, reply) => {
     const result = await SessionManager.createSession();
     reply.code(201).send(result);
