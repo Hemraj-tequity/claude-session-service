@@ -9,6 +9,12 @@ import { config } from '../config/env.js';
 
 export type SpawnMode = 'fresh' | 'resume';
 
+/**
+ * Starts (or resumes) one Claude Agent SDK subprocess for a session. `mode`
+ * selects between passing `sessionId` (fresh) and `resume` (reattach to an
+ * existing SDK-side session) -- driven by the DB's `sdkStarted` flag by the
+ * caller, not tracked here.
+ */
 export const spawnQuery = (
   sessionId: string,
   mode: SpawnMode,
@@ -36,6 +42,7 @@ const AUTH_ERROR_CODES: ReadonlySet<SDKAssistantMessageError> = new Set([
   'oauth_org_not_allowed',
 ]);
 
+/** True if an assistant message reports a Claude host authentication failure. */
 export function isAuthError(msg: SDKAssistantMessage): boolean {
   return msg.error !== undefined && AUTH_ERROR_CODES.has(msg.error);
 }

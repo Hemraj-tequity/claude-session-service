@@ -1,14 +1,15 @@
-import type { FastifyReply } from 'fastify';
+import type { FastifyError, FastifyReply, FastifyRequest } from "fastify";
+import { ZodError, treeifyError } from "zod";
 
 export type ErrorCode =
-  | 'INVALID_INPUT'
-  | 'UNAUTHORIZED'
-  | 'SESSION_NOT_FOUND'
-  | 'SESSION_STOPPED'
-  | 'CLAUDE_AUTH_ERROR'
-  | 'STREAM_ERROR'
-  | 'PERSIST_FAILED'
-  | 'INTERNAL_ERROR';
+  | "INVALID_INPUT"
+  | "UNAUTHORIZED"
+  | "SESSION_NOT_FOUND"
+  | "SESSION_STOPPED"
+  | "CLAUDE_AUTH_ERROR"
+  | "STREAM_ERROR"
+  | "PERSIST_FAILED"
+  | "INTERNAL_ERROR";
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_INPUT: 400,
@@ -28,7 +29,7 @@ export class AppError extends Error {
 
   constructor(code: ErrorCode, message: string, details?: unknown) {
     super(message);
-    this.name = 'AppError';
+    this.name = "AppError";
     this.code = code;
     this.statusCode = STATUS_BY_CODE[code];
     this.details = details;
@@ -47,5 +48,36 @@ export function errorBody(code: ErrorCode, message: string, details?: unknown) {
 }
 
 export function sendError(reply: FastifyReply, err: AppError): void {
-  reply.code(err.statusCode).send(errorBody(err.code, err.message, err.details));
+  reply
+    .code(err.statusCode)
+    .send(errorBody(err.code, err.message, err.details));
+}
+
+export function fastifyErrorHandler(
+  err: FastifyError | AppError | ZodError,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): void {
+  if (err instanceof AppError) {
+    sendError(reply, err);
+    return;
+  }
+  if (err instanceof ZodError) {
+    reply
+      .code(400)
+      .send(
+        errorBody("INVALID_INPUT", "Malformed request body", treeifyError(err)),
+      );
+    return;
+  }
+  // Fastify's own validation errors carry a statusCode (e.g. bad params schema).
+  const statusCode = err.statusCode;
+  if (typeof statusCode === "number" && statusCode < 500) {
+    reply.code(statusCode).send(errorBody("INVALID_INPUT", err.message));
+    return;
+  }
+  request.log.error({ err }, "unhandled error");
+  reply
+    .code(500)
+    .send(errorBody("INTERNAL_ERROR", "An unexpected error occurred"));
 }
