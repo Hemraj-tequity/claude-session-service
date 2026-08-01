@@ -81,12 +81,12 @@ describe('spawnQuery', () => {
     expect(result).toEqual({ __fakeQuery: true });
   });
 
-  it("injects the caller's own token as CLAUDE_CODE_AUTH_TOKEN", () => {
+  it("injects the caller's own token as CLAUDE_CODE_OAUTH_TOKEN", () => {
     const prompt = (async function* () {})();
     spawnQuery('session-6', 'fresh', prompt, 'caller-token');
 
     const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
-    expect(call.options.env?.CLAUDE_CODE_AUTH_TOKEN).toBe('caller-token');
+    expect(call.options.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe('caller-token');
   });
 
   it('still forwards the rest of the process environment (PATH, HOME, etc.)', () => {
@@ -107,7 +107,7 @@ describe('spawnQuery', () => {
     spawnQuery('session-8', 'fresh', prompt, 'caller-token');
 
     const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
-    expect(call.options.env?.CLAUDE_CODE_AUTH_TOKEN).toBe('caller-token');
+    expect(call.options.env?.CLAUDE_CODE_OAUTH_TOKEN).toBe('caller-token');
   });
 });
 

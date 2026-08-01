@@ -32,7 +32,7 @@ export const spawnQuery = (
       includePartialMessages: true,
       env: {
         ...process.env,
-        CLAUDE_CODE_AUTH_TOKEN: claudeAuthToken,
+        CLAUDE_CODE_OAUTH_TOKEN: claudeAuthToken,
       },
     },
   });
