@@ -7,14 +7,12 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import { config } from '../config/env.js';
 
-export type SpawnMode = 'fresh' | 'resume';
-
-export function spawnQuery(
+export const spawnQuery = (
   sessionId: string,
-  mode: SpawnMode,
+  mode: 'fresh' | 'resume',
   prompt: AsyncIterable<SDKUserMessage>,
-): Query {
-  return query({
+  claudeAuthToken: string,
+): Query => query({
     prompt,
     options: {
       ...(mode === 'fresh' ? { sessionId } : { resume: sessionId }),
@@ -26,22 +24,16 @@ export function spawnQuery(
       includePartialMessages: true,
       env: {
         ...process.env,
-        CLAUDE_CODE_AUTH_TOKEN: config.claudeCodeAuthToken,
+        CLAUDE_CODE_AUTH_TOKEN: claudeAuthToken,
       },
     },
   });
-}
 
 const AUTH_ERROR_CODES: ReadonlySet<SDKAssistantMessageError> = new Set([
   'authentication_failed',
   'oauth_org_not_allowed',
 ]);
 
-/**
- * Distinguishes an auth failure (needs a `claude login` / API key fix on the
- * host) from any other assistant-turn error, using the SDK's own typed error
- * field rather than string-matching a message.
- */
 export function isAuthError(msg: SDKAssistantMessage): boolean {
   return msg.error !== undefined && AUTH_ERROR_CODES.has(msg.error);
 }
