@@ -127,7 +127,7 @@ async function terminateWithError(session: ActiveSession, code: ErrorCode, messa
  * Spawn mode is driven by the DB's `sdkStarted` flag (not an in-memory flag),
  * so resurrection is correct across our own service restarts.
  */
-async function ensureLive(sessionId: string): Promise<ActiveSession> {
+async function ensureLive(sessionId: string, claudeToken: string): Promise<ActiveSession> {
   const existing = activeSessions.get(sessionId);
   if (existing?.query) return existing;
 
@@ -145,7 +145,7 @@ async function ensureLive(sessionId: string): Promise<ActiveSession> {
     session.seq = (await transcriptRepo.maxSequence(sessionId)) + 1;
   }
 
-  session.query = spawnQuery(sessionId, mode, session.inputQueue);
+  session.query = spawnQuery(sessionId, mode, session.inputQueue, claudeToken);
   void pumpMessages(session, mode === 'fresh');
 
   return session;
@@ -158,8 +158,8 @@ export async function createSession(): Promise<{ session_id: string; status: str
   return { session_id: row.sessionId, status: row.status, created_at: row.createdAt.toISOString() };
 }
 
-export async function submitInput(sessionId: string, content: string, reply: FastifyReply): Promise<void> {
-  const session = await ensureLive(sessionId);
+export async function submitInput(sessionId: string, content: string, reply: FastifyReply, claudeToken: string): Promise<void> {
+  const session = await ensureLive(sessionId, claudeToken);
 
   // Persisted BEFORE forwarding to the SDK -- if this fails, the request
   // never reaches the SDK and the caller gets a clean error, not a stream.
@@ -204,7 +204,7 @@ async function replayPersisted(sessionId: string, reply: FastifyReply): Promise<
   }
 }
 
-export async function attach(sessionId: string, reply: FastifyReply): Promise<void> {
+export async function attach(sessionId: string, reply: FastifyReply, claudeToken: string): Promise<void> {
   const row = await sessionRepo.findById(sessionId);
   if (!row) throw new AppError('SESSION_NOT_FOUND', `Session ${sessionId} not found`);
 
@@ -216,7 +216,7 @@ export async function attach(sessionId: string, reply: FastifyReply): Promise<vo
     return;
   }
 
-  const session = await ensureLive(sessionId);
+  const session = await ensureLive(sessionId, claudeToken);
   startSse(reply);
   await replayPersisted(sessionId, reply);
   takeOverReader(session, reply);

@@ -179,7 +179,7 @@ describe('SessionManager', () => {
       const { submitInput } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(null);
 
-      await expect(submitInput('missing', 'hi', fakeReply())).rejects.toMatchObject({
+      await expect(submitInput('missing', 'hi', fakeReply(), 'token')).rejects.toMatchObject({
         code: 'SESSION_NOT_FOUND',
       });
     });
@@ -188,7 +188,7 @@ describe('SessionManager', () => {
       const { submitInput } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(runningRow({ status: 'stopped' }));
 
-      await expect(submitInput('s1', 'hi', fakeReply())).rejects.toMatchObject({
+      await expect(submitInput('s1', 'hi', fakeReply(), 'token')).rejects.toMatchObject({
         code: 'SESSION_STOPPED',
       });
     });
@@ -201,7 +201,7 @@ describe('SessionManager', () => {
       routeMessageMock.mockResolvedValue({ turnDone: { isError: false, message: 'ok' } });
 
       const reply = fakeReply();
-      const promise = submitInput('s1', 'hello', reply);
+      const promise = submitInput('s1', 'hello', reply, 'token');
       // submitInput must reach takeOverReader (attach its reader) before the
       // terminal message is delivered, or the completion signal races ahead
       // of the reader being wired up.
@@ -209,7 +209,7 @@ describe('SessionManager', () => {
       fq.push({ type: 'result', subtype: 'success', result: 'ok', num_turns: 1 });
       await promise;
 
-      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything());
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token');
       expect(historyRepoMock.insertMessage).toHaveBeenCalledWith('s1', 'user', 'hello');
       expect(startSseMock).toHaveBeenCalledWith(reply);
       expect(writeSseMock).toHaveBeenCalledWith(reply, expect.objectContaining({ type: 'done' }));
@@ -225,12 +225,12 @@ describe('SessionManager', () => {
       routeMessageMock.mockResolvedValue({ turnDone: { isError: false, message: 'ok' } });
 
       const reply = fakeReply();
-      const promise = submitInput('s1', 'hello', reply);
+      const promise = submitInput('s1', 'hello', reply, 'token');
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
       fq.push({ type: 'result', subtype: 'success', result: 'ok', num_turns: 1 });
       await promise;
 
-      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'resume', expect.anything());
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'resume', expect.anything(), 'token');
     });
 
     it('marks the SDK started once a fresh spawn reports its init message', async () => {
@@ -240,7 +240,7 @@ describe('SessionManager', () => {
       spawnQueryMock.mockReturnValue(fq.query);
       routeMessageMock.mockResolvedValue({});
 
-      const promise = submitInput('s1', 'hello', fakeReply());
+      const promise = submitInput('s1', 'hello', fakeReply(), 'token');
       fq.push({ type: 'system', subtype: 'init' });
       await vi.waitFor(() => expect(sessionRepoMock.markSdkStarted).toHaveBeenCalledWith('s1'));
 
@@ -257,7 +257,7 @@ describe('SessionManager', () => {
       spawnQueryMock.mockReturnValue(fq.query);
       routeMessageMock.mockResolvedValue({});
 
-      const promise = submitInput('s1', 'hello', fakeReply());
+      const promise = submitInput('s1', 'hello', fakeReply(), 'token');
       fq.push({ type: 'system', subtype: 'init' });
       await vi.waitFor(() =>
         expect(loggerMock.warn).toHaveBeenCalledWith(
@@ -279,7 +279,7 @@ describe('SessionManager', () => {
       spawnQueryMock.mockReturnValue(fq.query);
 
       const reply = fakeReply();
-      const promise = submitInput('s1', 'hello', reply);
+      const promise = submitInput('s1', 'hello', reply, 'token');
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
       fq.fail(new Error('subprocess crashed'));
       await promise;
@@ -297,7 +297,7 @@ describe('SessionManager', () => {
       spawnQueryMock.mockReturnValue(fq.query);
       historyRepoMock.insertMessage.mockRejectedValue(new Error('db down'));
 
-      await expect(submitInput('s1', 'hello', fakeReply())).rejects.toMatchObject({
+      await expect(submitInput('s1', 'hello', fakeReply(), 'token')).rejects.toMatchObject({
         code: 'PERSIST_FAILED',
       });
     });
@@ -310,13 +310,13 @@ describe('SessionManager', () => {
       routeMessageMock.mockResolvedValue({});
 
       const reply1 = fakeReply();
-      const first = submitInput('s1', 'first', reply1);
+      const first = submitInput('s1', 'first', reply1, 'token');
 
       // Let the first call reach its "awaiting turnDone" point before starting the second.
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply1));
 
       const reply2 = fakeReply();
-      const second = submitInput('s1', 'second', reply2);
+      const second = submitInput('s1', 'second', reply2, 'token');
 
       routeMessageMock.mockResolvedValueOnce({ turnDone: { isError: false, message: 'first done' } });
       fq.push({ type: 'result', subtype: 'success', result: 'first done', num_turns: 1 });
@@ -339,7 +339,7 @@ describe('SessionManager', () => {
       routeMessageMock.mockResolvedValue({ persistFailed: new Error('write failed') });
 
       const reply = fakeReply();
-      const promise = submitInput('s1', 'hello', reply);
+      const promise = submitInput('s1', 'hello', reply, 'token');
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
       fq.push({ type: 'assistant', message: { content: [] } });
       await promise;
@@ -359,7 +359,7 @@ describe('SessionManager', () => {
       routeMessageMock.mockResolvedValue({ authError: true });
 
       const reply = fakeReply();
-      const promise = submitInput('s1', 'hello', reply);
+      const promise = submitInput('s1', 'hello', reply, 'token');
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
       fq.push({ type: 'assistant', message: { content: [] } });
       await promise;
@@ -378,7 +378,7 @@ describe('SessionManager', () => {
       spawnQueryMock.mockReturnValue(fq.query);
 
       const reply = fakeReply();
-      const promise = submitInput('s1', 'hello', reply);
+      const promise = submitInput('s1', 'hello', reply, 'token');
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
       fq.fail(new Error('subprocess crashed'));
       await promise;
@@ -400,7 +400,7 @@ describe('SessionManager', () => {
       const { attach } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(null);
 
-      await expect(attach('missing', fakeReply())).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' });
+      await expect(attach('missing', fakeReply(), 'token')).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' });
     });
 
     it('replays persisted transcript and ends the stream for a non-running session, without spawning', async () => {
@@ -410,7 +410,7 @@ describe('SessionManager', () => {
       translateMessageMock.mockReturnValue({ events: [{ type: 'result', timestamp: 't' }] });
 
       const reply = fakeReply();
-      await attach('s1', reply);
+      await attach('s1', reply, 'token');
 
       expect(spawnQueryMock).not.toHaveBeenCalled();
       expect(startSseMock).toHaveBeenCalledWith(reply);
@@ -427,9 +427,9 @@ describe('SessionManager', () => {
       transcriptRepoMock.findSince.mockResolvedValue([]);
 
       const reply = fakeReply();
-      await attach('s1', reply);
+      await attach('s1', reply, 'token');
 
-      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything());
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token');
       expect(startSseMock).toHaveBeenCalledWith(reply);
       expect(reply.onceMock).toHaveBeenCalledWith('close', expect.any(Function));
     });
@@ -441,13 +441,13 @@ describe('SessionManager', () => {
       spawnQueryMock.mockReturnValue(fq.query);
 
       const firstReader = fakeReply();
-      await attach('s1', firstReader);
+      await attach('s1', firstReader, 'token');
 
       writeSseMock.mockClear();
       endSseMock.mockClear();
 
       const secondReader = fakeReply();
-      await attach('s1', secondReader);
+      await attach('s1', secondReader, 'token');
 
       expect(writeSseMock).toHaveBeenCalledWith(
         firstReader,
@@ -465,7 +465,7 @@ describe('SessionManager', () => {
         spawnQueryMock.mockReturnValue(fq.query);
 
         const reply = fakeReply();
-        await attach('s1', reply);
+        await attach('s1', reply, 'token');
 
         await vi.advanceTimersByTimeAsync(15000);
 
@@ -484,7 +484,7 @@ describe('SessionManager', () => {
         spawnQueryMock.mockReturnValue(fq.query);
 
         const reply = fakeReply();
-        await attach('s1', reply);
+        await attach('s1', reply, 'token');
         reply.triggerClose();
 
         await vi.advanceTimersByTimeAsync(15000);
@@ -502,12 +502,12 @@ describe('SessionManager', () => {
       spawnQueryMock.mockReturnValue(fq.query);
 
       const firstReader = fakeReply();
-      await attach('s1', firstReader);
+      await attach('s1', firstReader, 'token');
       firstReader.triggerClose();
 
       writeSseMock.mockClear();
       const secondReader = fakeReply();
-      await attach('s1', secondReader);
+      await attach('s1', secondReader, 'token');
 
       expect(writeSseMock).not.toHaveBeenCalledWith(
         firstReader,
@@ -555,7 +555,7 @@ describe('SessionManager', () => {
       routeMessageMock.mockResolvedValue({});
 
       const reply = fakeReply();
-      const submitPromise = submitInput('s1', 'hello', reply);
+      const submitPromise = submitInput('s1', 'hello', reply, 'token');
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
 
       const result = await stop('s1');
@@ -578,7 +578,7 @@ describe('SessionManager', () => {
       routeMessageMock.mockResolvedValue({});
 
       const reply = fakeReply();
-      const submitPromise = submitInput('s1', 'hello', reply);
+      const submitPromise = submitInput('s1', 'hello', reply, 'token');
       await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
 
       await expect(stop('s1')).resolves.toEqual({ session_id: 's1', status: 'stopped' });

@@ -7,6 +7,7 @@ const EnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'production']).default('development'),
   ALLOWED_TOOLS: z.string().default(''),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  CLAUDE_CODE_AUTH_TOKEN: z.string().optional(),
 });
 
 function parseCsv(value: string): string[] {
@@ -31,6 +32,7 @@ function loadConfig() {
     nodeEnv: env.NODE_ENV,
     allowedTools: parseCsv(env.ALLOWED_TOOLS),
     logLevel: env.LOG_LEVEL,
+    claudeCodeAuthToken: env.CLAUDE_CODE_AUTH_TOKEN,
   };
 }
 

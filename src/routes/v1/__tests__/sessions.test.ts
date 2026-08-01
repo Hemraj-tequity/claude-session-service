@@ -25,6 +25,8 @@ async function buildSessionsApp() {
 }
 
 const VALID_UUID = '123e4567-e89b-12d3-a456-426614174000';
+const AUTH_TOKEN = 'caller-token';
+const AUTH_HEADERS = { authorization: `Bearer ${AUTH_TOKEN}` };
 
 describe('sessionRoutes', () => {
   beforeEach(() => {
@@ -38,12 +40,61 @@ describe('sessionRoutes', () => {
     stopMock.mockReset();
   });
 
+  describe('authentication', () => {
+    it('rejects a request with no Authorization header with a 401, without calling SessionManager', async () => {
+      const app = await buildSessionsApp();
+      const res = await app.inject({ method: 'POST', url: '/sessions' });
+
+      expect(res.statusCode).toBe(401);
+      expect(createSessionMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects a non-Bearer Authorization header with a 401', async () => {
+      const app = await buildSessionsApp();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        headers: { authorization: AUTH_TOKEN },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(createSessionMock).not.toHaveBeenCalled();
+    });
+
+    it('rejects an empty Bearer token with a 401', async () => {
+      const app = await buildSessionsApp();
+      const res = await app.inject({
+        method: 'POST',
+        url: '/sessions',
+        headers: { authorization: 'Bearer ' },
+      });
+
+      expect(res.statusCode).toBe(401);
+      expect(createSessionMock).not.toHaveBeenCalled();
+    });
+
+    it('applies the same auth check to every route in this scope', async () => {
+      const app = await buildSessionsApp();
+
+      const results = await Promise.all([
+        app.inject({ method: 'POST', url: `/sessions/${VALID_UUID}/input`, payload: { content: 'hi' } }),
+        app.inject({ method: 'GET', url: `/sessions/${VALID_UUID}/attach` }),
+        app.inject({ method: 'DELETE', url: `/sessions/${VALID_UUID}` }),
+      ]);
+
+      for (const res of results) expect(res.statusCode).toBe(401);
+      expect(submitInputMock).not.toHaveBeenCalled();
+      expect(attachMock).not.toHaveBeenCalled();
+      expect(stopMock).not.toHaveBeenCalled();
+    });
+  });
+
   describe('POST /sessions', () => {
     it('creates a session and returns 201 with the result', async () => {
       createSessionMock.mockResolvedValue({ session_id: 's1', status: 'running', created_at: '2026-01-01T00:00:00.000Z' });
 
       const app = await buildSessionsApp();
-      const res = await app.inject({ method: 'POST', url: '/sessions' });
+      const res = await app.inject({ method: 'POST', url: '/sessions', headers: AUTH_HEADERS });
 
       expect(res.statusCode).toBe(201);
       expect(res.json()).toEqual({ session_id: 's1', status: 'running', created_at: '2026-01-01T00:00:00.000Z' });
@@ -57,6 +108,7 @@ describe('sessionRoutes', () => {
       const res = await app.inject({
         method: 'POST',
         url: '/sessions/not-a-uuid/input',
+        headers: AUTH_HEADERS,
         payload: { content: 'hi' },
       });
 
@@ -69,6 +121,7 @@ describe('sessionRoutes', () => {
       const res = await app.inject({
         method: 'POST',
         url: `/sessions/${VALID_UUID}/input`,
+        headers: AUTH_HEADERS,
         payload: {},
       });
 
@@ -82,6 +135,7 @@ describe('sessionRoutes', () => {
       const res = await app.inject({
         method: 'POST',
         url: `/sessions/${VALID_UUID}/input`,
+        headers: AUTH_HEADERS,
         payload: { content: '' },
       });
 
@@ -89,15 +143,16 @@ describe('sessionRoutes', () => {
       expect(submitInputMock).not.toHaveBeenCalled();
     });
 
-    it('forwards valid input to SessionManager.submitInput', async () => {
+    it("forwards valid input and the caller's token to SessionManager.submitInput", async () => {
       const app = await buildSessionsApp();
       const res = await app.inject({
         method: 'POST',
         url: `/sessions/${VALID_UUID}/input`,
+        headers: AUTH_HEADERS,
         payload: { content: 'hello' },
       });
 
-      expect(submitInputMock).toHaveBeenCalledWith(VALID_UUID, 'hello', expect.anything());
+      expect(submitInputMock).toHaveBeenCalledWith(VALID_UUID, 'hello', expect.anything(), AUTH_TOKEN);
       expect(res.json()).toEqual({ streamed: true });
     });
   });
@@ -105,17 +160,17 @@ describe('sessionRoutes', () => {
   describe('GET /sessions/:sessionId/attach', () => {
     it('rejects a malformed sessionId with a 400', async () => {
       const app = await buildSessionsApp();
-      const res = await app.inject({ method: 'GET', url: '/sessions/bad-id/attach' });
+      const res = await app.inject({ method: 'GET', url: '/sessions/bad-id/attach', headers: AUTH_HEADERS });
 
       expect(res.statusCode).toBe(400);
       expect(attachMock).not.toHaveBeenCalled();
     });
 
-    it('forwards a valid sessionId to SessionManager.attach', async () => {
+    it("forwards a valid sessionId and the caller's token to SessionManager.attach", async () => {
       const app = await buildSessionsApp();
-      const res = await app.inject({ method: 'GET', url: `/sessions/${VALID_UUID}/attach` });
+      const res = await app.inject({ method: 'GET', url: `/sessions/${VALID_UUID}/attach`, headers: AUTH_HEADERS });
 
-      expect(attachMock).toHaveBeenCalledWith(VALID_UUID, expect.anything());
+      expect(attachMock).toHaveBeenCalledWith(VALID_UUID, expect.anything(), AUTH_TOKEN);
       expect(res.json()).toEqual({ attached: true });
     });
   });
@@ -123,7 +178,7 @@ describe('sessionRoutes', () => {
   describe('DELETE /sessions/:sessionId', () => {
     it('rejects a malformed sessionId with a 400', async () => {
       const app = await buildSessionsApp();
-      const res = await app.inject({ method: 'DELETE', url: '/sessions/bad-id' });
+      const res = await app.inject({ method: 'DELETE', url: '/sessions/bad-id', headers: AUTH_HEADERS });
 
       expect(res.statusCode).toBe(400);
       expect(stopMock).not.toHaveBeenCalled();
@@ -133,7 +188,7 @@ describe('sessionRoutes', () => {
       stopMock.mockResolvedValue({ session_id: VALID_UUID, status: 'stopped' });
 
       const app = await buildSessionsApp();
-      const res = await app.inject({ method: 'DELETE', url: `/sessions/${VALID_UUID}` });
+      const res = await app.inject({ method: 'DELETE', url: `/sessions/${VALID_UUID}`, headers: AUTH_HEADERS });
 
       expect(stopMock).toHaveBeenCalledWith(VALID_UUID);
       expect(res.statusCode).toBe(200);

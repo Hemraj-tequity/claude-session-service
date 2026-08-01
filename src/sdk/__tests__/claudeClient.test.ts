@@ -26,6 +26,7 @@ interface QueryCallArgs {
     allowDangerouslySkipPermissions?: boolean;
     persistSession?: boolean;
     includePartialMessages?: boolean;
+    env?: NodeJS.ProcessEnv;
   };
 }
 
@@ -36,7 +37,7 @@ describe('spawnQuery', () => {
 
   it('passes sessionId (fresh mode) instead of resume', () => {
     const prompt = (async function* () {})();
-    spawnQuery('session-1', 'fresh', prompt);
+    spawnQuery('session-1', 'fresh', prompt, 'caller-token');
 
     expect(queryMock).toHaveBeenCalledTimes(1);
     const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
@@ -47,7 +48,7 @@ describe('spawnQuery', () => {
 
   it('passes resume (resume mode) instead of sessionId', () => {
     const prompt = (async function* () {})();
-    spawnQuery('session-2', 'resume', prompt);
+    spawnQuery('session-2', 'resume', prompt, 'caller-token');
 
     const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
     expect(call.options.resume).toBe('session-2');
@@ -56,7 +57,7 @@ describe('spawnQuery', () => {
 
   it('forwards the configured allow-list to both tools and allowedTools', () => {
     const prompt = (async function* () {})();
-    spawnQuery('session-3', 'fresh', prompt);
+    spawnQuery('session-3', 'fresh', prompt, 'caller-token');
 
     const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
     expect(call.options.tools).toEqual(['Read', 'Grep']);
@@ -65,7 +66,7 @@ describe('spawnQuery', () => {
 
   it('always runs headless with bypassPermissions and partial-message streaming', () => {
     const prompt = (async function* () {})();
-    spawnQuery('session-4', 'fresh', prompt);
+    spawnQuery('session-4', 'fresh', prompt, 'caller-token');
 
     const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
     expect(call.options.permissionMode).toBe('bypassPermissions');
@@ -76,8 +77,44 @@ describe('spawnQuery', () => {
 
   it('returns whatever the SDK query() call returns', () => {
     const prompt = (async function* () {})();
-    const result = spawnQuery('session-5', 'fresh', prompt);
+    const result = spawnQuery('session-5', 'fresh', prompt, 'caller-token');
     expect(result).toEqual({ __fakeQuery: true });
+  });
+
+  it("injects the caller's own token as CLAUDE_CODE_AUTH_TOKEN", () => {
+    const prompt = (async function* () {})();
+    spawnQuery('session-6', 'fresh', prompt, 'caller-token');
+
+    const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
+    expect(call.options.env?.CLAUDE_CODE_AUTH_TOKEN).toBe('caller-token');
+  });
+
+  it('still forwards the rest of the process environment (PATH, HOME, etc.)', () => {
+    const prompt = (async function* () {})();
+    process.env.SOME_HOST_VAR = 'kept';
+
+    spawnQuery('session-7', 'fresh', prompt, 'caller-token');
+
+    const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
+    expect(call.options.env?.SOME_HOST_VAR).toBe('kept');
+
+    delete process.env.SOME_HOST_VAR;
+  });
+
+  it('strips any host-inherited ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN so they cannot outrank the caller token', () => {
+    const prompt = (async function* () {})();
+    process.env.ANTHROPIC_API_KEY = 'someone-elses-key';
+    process.env.ANTHROPIC_AUTH_TOKEN = 'someone-elses-token';
+
+    spawnQuery('session-8', 'fresh', prompt, 'caller-token');
+
+    const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
+    expect(call.options.env?.ANTHROPIC_API_KEY).toBeUndefined();
+    expect(call.options.env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
+    expect(call.options.env?.CLAUDE_CODE_AUTH_TOKEN).toBe('caller-token');
+
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
   });
 });
 

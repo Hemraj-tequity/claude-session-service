@@ -2,7 +2,6 @@ import Fastify, { type FastifyBaseLogger, type FastifyError, type FastifyInstanc
 import { ZodError, treeifyError } from 'zod';
 import { logger } from './lib/logger.js';
 import { AppError, errorBody, sendError } from './lib/errors.js';
-import { healthRoutes } from './routes/health.js';
 import { sessionRoutes } from './routes/v1/sessions.js';
 
 export async function buildApp(): Promise<FastifyInstance> {
@@ -27,7 +26,6 @@ export async function buildApp(): Promise<FastifyInstance> {
     reply.code(500).send(errorBody('INTERNAL_ERROR', 'An unexpected error occurred'));
   });
 
-  await app.register(healthRoutes);
   await app.register(sessionRoutes, { prefix: '/api/v1' });
 
   return app;

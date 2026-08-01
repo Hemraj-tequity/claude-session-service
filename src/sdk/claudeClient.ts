@@ -9,11 +9,6 @@ import { config } from '../config/env.js';
 
 export type SpawnMode = 'fresh' | 'resume';
 
-/**
- * The only file that calls into @anthropic-ai/claude-agent-sdk directly --
- * isolated here since this API surface is the most likely to shift between
- * SDK versions.
- */
 export function spawnQuery(
   sessionId: string,
   mode: SpawnMode,
@@ -23,17 +18,16 @@ export function spawnQuery(
     prompt,
     options: {
       ...(mode === 'fresh' ? { sessionId } : { resume: sessionId }),
-      // Restricts the actual available tool set (not just auto-approval) to the
-      // configured allow-list -- keeps the system prompt's tool definitions
-      // small and matches the spec's "expand deliberately per deployment" intent.
       tools: config.allowedTools,
       allowedTools: config.allowedTools,
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
-      // which our Postgres-native `resume` mode relies on for same-host continuity.
       persistSession: true,
-      // Token-level stream_event messages, mapped to SSE `chunk` events.
       includePartialMessages: true,
+      env: {
+        ...process.env,
+        CLAUDE_CODE_AUTH_TOKEN: config.claudeCodeAuthToken,
+      },
     },
   });
 }

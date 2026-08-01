@@ -5,6 +5,7 @@ import { AppError, errorBody, sendError, type ErrorCode } from '../errors.js';
 describe('AppError', () => {
   it.each<[ErrorCode, number]>([
     ['INVALID_INPUT', 400],
+    ['UNAUTHORIZED', 401],
     ['SESSION_NOT_FOUND', 404],
     ['SESSION_STOPPED', 409],
     ['CLAUDE_AUTH_ERROR', 401],

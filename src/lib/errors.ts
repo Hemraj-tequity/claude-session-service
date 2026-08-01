@@ -2,6 +2,7 @@ import type { FastifyReply } from 'fastify';
 
 export type ErrorCode =
   | 'INVALID_INPUT'
+  | 'UNAUTHORIZED'
   | 'SESSION_NOT_FOUND'
   | 'SESSION_STOPPED'
   | 'CLAUDE_AUTH_ERROR'
@@ -11,6 +12,7 @@ export type ErrorCode =
 
 const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INVALID_INPUT: 400,
+  UNAUTHORIZED: 401,
   SESSION_NOT_FOUND: 404,
   SESSION_STOPPED: 409,
   CLAUDE_AUTH_ERROR: 401,

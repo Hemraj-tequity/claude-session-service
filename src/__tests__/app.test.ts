@@ -1,9 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ZodError, z } from 'zod';
 
-const { queryRaw, getCachedAuthStatus, createSession, submitInput, attach, stop } = vi.hoisted(() => ({
+const { queryRaw, createSession, submitInput, attach, stop } = vi.hoisted(() => ({
   queryRaw: vi.fn(),
-  getCachedAuthStatus: vi.fn(),
   createSession: vi.fn(),
   submitInput: vi.fn(),
   attach: vi.fn(),
@@ -18,17 +17,16 @@ vi.mock('../lib/logger.js', async () => {
 });
 
 vi.mock('../lib/prisma.js', () => ({ prisma: { $queryRaw: queryRaw } }));
-vi.mock('../startup/authCheck.js', () => ({ getCachedAuthStatus }));
 vi.mock('../sessions/SessionManager.js', () => ({ createSession, submitInput, attach, stop }));
 
 import { buildApp } from '../app.js';
 
 const VALID_UUID = '123e4567-e89b-12d3-a456-426614174000';
+const AUTH_HEADERS = { authorization: 'Bearer caller-token' };
 
 describe('buildApp', () => {
   beforeEach(() => {
     queryRaw.mockReset().mockResolvedValue([{}]);
-    getCachedAuthStatus.mockReset().mockReturnValue({ ok: true, method: 'api_key' });
     createSession.mockReset();
     submitInput.mockReset();
     attach.mockReset();
@@ -45,7 +43,7 @@ describe('buildApp', () => {
     createSession.mockResolvedValue({ session_id: 's1', status: 'running', created_at: '2026-01-01T00:00:00.000Z' });
 
     const app = await buildApp();
-    const res = await app.inject({ method: 'POST', url: '/api/v1/sessions' });
+    const res = await app.inject({ method: 'POST', url: '/api/v1/sessions', headers: AUTH_HEADERS });
 
     expect(res.statusCode).toBe(201);
     expect(res.json()).toEqual({ session_id: 's1', status: 'running', created_at: '2026-01-01T00:00:00.000Z' });
@@ -62,7 +60,7 @@ describe('buildApp', () => {
       stop.mockRejectedValue(new (await import('../lib/errors.js')).AppError('SESSION_NOT_FOUND', 'Session x not found'));
 
       const app = await buildApp();
-      const res = await app.inject({ method: 'DELETE', url: `/api/v1/sessions/${VALID_UUID}` });
+      const res = await app.inject({ method: 'DELETE', url: `/api/v1/sessions/${VALID_UUID}`, headers: AUTH_HEADERS });
 
       expect(res.statusCode).toBe(404);
       expect(res.json()).toMatchObject({
@@ -76,7 +74,7 @@ describe('buildApp', () => {
       createSession.mockRejectedValue(zodError);
 
       const app = await buildApp();
-      const res = await app.inject({ method: 'POST', url: '/api/v1/sessions' });
+      const res = await app.inject({ method: 'POST', url: '/api/v1/sessions', headers: AUTH_HEADERS });
 
       expect(res.statusCode).toBe(400);
       const body = res.json<{ error: { code: string; message: string; details?: unknown } }>();
@@ -87,7 +85,7 @@ describe('buildApp', () => {
 
     it("maps Fastify's own schema-validation failures (statusCode < 500) to INVALID_INPUT", async () => {
       const app = await buildApp();
-      const res = await app.inject({ method: 'GET', url: '/api/v1/sessions/not-a-uuid/attach' });
+      const res = await app.inject({ method: 'GET', url: '/api/v1/sessions/not-a-uuid/attach', headers: AUTH_HEADERS });
 
       expect(res.statusCode).toBe(400);
       expect(res.json()).toMatchObject({ error: { code: 'INVALID_INPUT' } });
@@ -98,7 +96,7 @@ describe('buildApp', () => {
       attach.mockRejectedValue(new Error('boom'));
 
       const app = await buildApp();
-      const res = await app.inject({ method: 'GET', url: `/api/v1/sessions/${VALID_UUID}/attach` });
+      const res = await app.inject({ method: 'GET', url: `/api/v1/sessions/${VALID_UUID}/attach`, headers: AUTH_HEADERS });
 
       expect(res.statusCode).toBe(500);
       expect(res.json()).toMatchObject({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } });
