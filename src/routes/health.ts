@@ -4,7 +4,7 @@ import { getCachedAuthStatus } from '../startup/authCheck.js';
 
 const startedAt = Date.now();
 
-export async function healthRoutes(app: FastifyInstance): Promise<void> {
+export function healthRoutes(app: FastifyInstance): void {
   app.get('/health', async (_request, reply) => {
     const auth = getCachedAuthStatus();
 

@@ -66,7 +66,7 @@ export function translateMessage(msg: SDKMessage): Translation {
     }
     case 'assistant': {
       authError = isAuthError(msg);
-      const blocks = (msg.message.content ?? []) as ContentBlock[];
+      const blocks = ((msg.message as { content?: unknown }).content ?? []) as ContentBlock[];
       for (const block of blocks) {
         if (block.type === 'tool_use') {
           events.push(
@@ -87,7 +87,8 @@ export function translateMessage(msg: SDKMessage): Translation {
       // submitInput before the SDK ever sees them, so a 'user' message coming
       // back through the stream here is always a tool-result echo, not a
       // fresh prompt -- route it to transcripts/SSE only, never to history.
-      const blocks = (Array.isArray(msg.message.content) ? msg.message.content : []) as ContentBlock[];
+      const content = (msg.message as { content?: unknown }).content;
+      const blocks = (Array.isArray(content) ? content : []) as ContentBlock[];
       for (const block of blocks) {
         if (block.type === 'tool_result') {
           events.push(
