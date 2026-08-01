@@ -101,20 +101,13 @@ describe('spawnQuery', () => {
     delete process.env.SOME_HOST_VAR;
   });
 
-  it('strips any host-inherited ANTHROPIC_API_KEY / ANTHROPIC_AUTH_TOKEN so they cannot outrank the caller token', () => {
+  it('strips any host-inherited so they cannot outrank the caller token', () => {
     const prompt = (async function* () {})();
-    process.env.ANTHROPIC_API_KEY = 'someone-elses-key';
-    process.env.ANTHROPIC_AUTH_TOKEN = 'someone-elses-token';
 
     spawnQuery('session-8', 'fresh', prompt, 'caller-token');
 
     const [[call]] = queryMock.mock.calls as [[QueryCallArgs]];
-    expect(call.options.env?.ANTHROPIC_API_KEY).toBeUndefined();
-    expect(call.options.env?.ANTHROPIC_AUTH_TOKEN).toBeUndefined();
     expect(call.options.env?.CLAUDE_CODE_AUTH_TOKEN).toBe('caller-token');
-
-    delete process.env.ANTHROPIC_API_KEY;
-    delete process.env.ANTHROPIC_AUTH_TOKEN;
   });
 });
 

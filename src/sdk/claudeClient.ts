@@ -7,9 +7,11 @@ import type {
 } from '@anthropic-ai/claude-agent-sdk';
 import { config } from '../config/env.js';
 
+export type SpawnMode = 'fresh' | 'resume';
+
 export const spawnQuery = (
   sessionId: string,
-  mode: 'fresh' | 'resume',
+  mode: SpawnMode,
   prompt: AsyncIterable<SDKUserMessage>,
   claudeAuthToken: string,
 ): Query => query({

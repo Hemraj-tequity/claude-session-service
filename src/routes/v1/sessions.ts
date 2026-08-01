@@ -15,10 +15,11 @@ const sessionIdParamSchema = {
 
 export function sessionRoutes(app: FastifyInstance): void {
   app.decorateRequest('claudeToken', '');
-  app.addHook('onRequest', async (request) => {
+  app.addHook('onRequest', (request, _reply, done) => {
     // Every request authenticates as its own caller; there is no shared
     // fallback credential, so this must run before any handler in this scope.
     request.claudeToken = extractClaudeToken(request.headers);
+    done();
   });
 
   app.post('/sessions', async (_request, reply) => {
