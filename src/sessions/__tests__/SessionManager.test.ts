@@ -180,7 +180,7 @@ describe('SessionManager', () => {
       sessionRepoMock.findById.mockResolvedValue(null);
 
       await expect(submitInput('missing', 'hi', fakeReply(), 'token')).rejects.toMatchObject({
-        code: 'SESSION_NOT_FOUND',
+        type: 'SESSION_NOT_FOUND',
       });
     });
 
@@ -189,7 +189,7 @@ describe('SessionManager', () => {
       sessionRepoMock.findById.mockResolvedValue(runningRow({ status: 'stopped' }));
 
       await expect(submitInput('s1', 'hi', fakeReply(), 'token')).rejects.toMatchObject({
-        code: 'SESSION_STOPPED',
+        type: 'SESSION_STOPPED',
       });
     });
 
@@ -290,7 +290,7 @@ describe('SessionManager', () => {
       );
     });
 
-    it('rejects with PERSIST_FAILED when recording the prompt fails, without contacting the SDK', async () => {
+    it('rejects with DATABASE_ERROR when recording the prompt fails, without contacting the SDK', async () => {
       const { submitInput } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
       const fq = createFakeQuery();
@@ -298,7 +298,7 @@ describe('SessionManager', () => {
       historyRepoMock.insertMessage.mockRejectedValue(new Error('db down'));
 
       await expect(submitInput('s1', 'hello', fakeReply(), 'token')).rejects.toMatchObject({
-        code: 'PERSIST_FAILED',
+        type: 'DATABASE_ERROR',
       });
     });
 
@@ -331,7 +331,7 @@ describe('SessionManager', () => {
       expect(historyRepoMock.insertMessage).toHaveBeenCalledWith('s1', 'user', 'second');
     });
 
-    it('terminates the session with PERSIST_FAILED when a transcript write fails mid-turn', async () => {
+    it('terminates the session with DATABASE_ERROR when a transcript write fails mid-turn', async () => {
       const { submitInput } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
       const fq = createFakeQuery();
@@ -346,7 +346,7 @@ describe('SessionManager', () => {
 
       expect(writeSseMock).toHaveBeenCalledWith(
         reply,
-        expect.objectContaining({ type: 'error', code: 'PERSIST_FAILED' }),
+        expect.objectContaining({ type: 'error', code: 'DATABASE_ERROR' }),
       );
       expect(sessionRepoMock.updateStatus).toHaveBeenCalledWith('s1', 'error');
     });
@@ -371,7 +371,7 @@ describe('SessionManager', () => {
       expect(sessionRepoMock.updateStatus).toHaveBeenCalledWith('s1', 'error');
     });
 
-    it('terminates the session with STREAM_ERROR when the underlying stream throws', async () => {
+    it('terminates the session with CHUNK_ERROR when the underlying stream throws', async () => {
       const { submitInput } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
       const fq = createFakeQuery();
@@ -385,7 +385,7 @@ describe('SessionManager', () => {
 
       expect(writeSseMock).toHaveBeenCalledWith(
         reply,
-        expect.objectContaining({ type: 'error', code: 'STREAM_ERROR' }),
+        expect.objectContaining({ type: 'error', code: 'CHUNK_ERROR' }),
       );
       expect(sessionRepoMock.updateStatus).toHaveBeenCalledWith('s1', 'error');
       expect(loggerMock.error).toHaveBeenCalledWith(
@@ -400,7 +400,7 @@ describe('SessionManager', () => {
       const { attach } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(null);
 
-      await expect(attach('missing', fakeReply(), 'token')).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' });
+      await expect(attach('missing', fakeReply(), 'token')).rejects.toMatchObject({ type: 'SESSION_NOT_FOUND' });
     });
 
     it('replays persisted transcript and ends the stream for a non-running session, without spawning', async () => {
@@ -521,7 +521,7 @@ describe('SessionManager', () => {
       const { stop } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(null);
 
-      await expect(stop('missing')).rejects.toMatchObject({ code: 'SESSION_NOT_FOUND' });
+      await expect(stop('missing')).rejects.toMatchObject({ type: 'SESSION_NOT_FOUND' });
     });
 
     it('marks a DB-only (not in-memory) session as stopped', async () => {

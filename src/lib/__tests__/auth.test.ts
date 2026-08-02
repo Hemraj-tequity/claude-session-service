@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { extractClaudeToken } from '../auth.js';
-import { AppError } from '../errors.js';
+import { UnauthorizedError } from '../errors.js';
 
-function catchError(fn: () => unknown): AppError {
+function catchError(fn: () => unknown): UnauthorizedError {
   try {
     fn();
   } catch (err) {
-    return err as AppError;
+    return err as UnauthorizedError;
   }
   throw new Error('expected fn to throw');
 }
@@ -22,23 +22,23 @@ describe('extractClaudeToken', () => {
 
   it('throws UNAUTHORIZED when the header is missing', () => {
     const err = catchError(() => extractClaudeToken({}));
-    expect(err).toBeInstanceOf(AppError);
-    expect(err.code).toBe('UNAUTHORIZED');
+    expect(err).toBeInstanceOf(UnauthorizedError);
+    expect(err.type).toBe('UNAUTHORIZED');
     expect(err.statusCode).toBe(401);
   });
 
   it('throws UNAUTHORIZED when the header lacks the Bearer prefix', () => {
     const err = catchError(() => extractClaudeToken({ authorization: 'sk-ant-abc123' }));
-    expect(err.code).toBe('UNAUTHORIZED');
+    expect(err.type).toBe('UNAUTHORIZED');
   });
 
   it('throws UNAUTHORIZED when the Bearer value is empty', () => {
     const err = catchError(() => extractClaudeToken({ authorization: 'Bearer ' }));
-    expect(err.code).toBe('UNAUTHORIZED');
+    expect(err.type).toBe('UNAUTHORIZED');
   });
 
   it('throws UNAUTHORIZED when the Bearer value is only whitespace', () => {
     const err = catchError(() => extractClaudeToken({ authorization: 'Bearer    ' }));
-    expect(err.code).toBe('UNAUTHORIZED');
+    expect(err.type).toBe('UNAUTHORIZED');
   });
 });

@@ -2,7 +2,14 @@ import { randomUUID } from "node:crypto";
 import type { FastifyReply } from "fastify";
 import type { SDKUserMessage } from "@anthropic-ai/claude-agent-sdk";
 import { logger } from "../lib/logger.js";
-import { AppError, type ErrorCode } from "../lib/errors.js";
+import {
+  type AppError,
+  NotFoundError,
+  ConflictError,
+  PersistenceError,
+  ClaudeAuthError,
+  ChunkError,
+} from "../lib/errors.js";
 import {
   startSse,
   writeSse,
@@ -113,16 +120,17 @@ async function consumeAgentMessageStream(
       if (outcome.persistFailed) {
         await terminateWithError(
           session,
-          "PERSIST_FAILED",
-          "Durable write failed; session stopped to avoid running ahead of persistence.",
+          new PersistenceError(
+            "Durable write failed; session stopped to avoid running ahead of persistence.",
+            { cause: outcome.persistFailed },
+          ),
         );
         return;
       }
       if (outcome.authError) {
         await terminateWithError(
           session,
-          "CLAUDE_AUTH_ERROR",
-          "Host Claude authentication failed or expired.",
+          new ClaudeAuthError("Host Claude authentication failed or expired."),
         );
         return;
       }
@@ -138,8 +146,7 @@ async function consumeAgentMessageStream(
     );
     await terminateWithError(
       session,
-      "STREAM_ERROR",
-      "The session process ended unexpectedly.",
+      new ChunkError("The session process ended unexpectedly.", { cause: err }),
     );
   }
 }
@@ -154,13 +161,12 @@ function completeCurrentTurn(session: ActiveSession): void {
 // Closes out a session's reader and subprocess, then marks it errored in the DB.
 async function terminateWithError(
   session: ActiveSession,
-  code: ErrorCode,
-  message: string,
+  error: AppError,
 ): Promise<void> {
   if (session.currentReader) {
     closeReader(
       session.currentReader,
-      makeSseEvent("error", { content: message, code }),
+      makeSseEvent("error", { content: error.message, code: error.type }),
     );
     session.currentReader = null;
   }
@@ -188,12 +194,9 @@ async function getOrStartLiveSession(
 
   const row = await sessionRepo.findById(sessionId);
   if (!row)
-    throw new AppError("SESSION_NOT_FOUND", `Session ${sessionId} not found`);
+    throw new NotFoundError(`Session ${sessionId} not found`, "SESSION_NOT_FOUND");
   if (row.status !== "running") {
-    throw new AppError(
-      "SESSION_STOPPED",
-      `Session ${sessionId} is ${row.status}`,
-    );
+    throw new ConflictError(`Session ${sessionId} is ${row.status}`, "SESSION_STOPPED");
   }
 
   const session = existing ?? createIdleSessionState(sessionId);
@@ -238,10 +241,9 @@ export async function submitInput(
   try {
     await historyRepo.insertMessage(sessionId, "user", content);
   } catch (err) {
-    throw new AppError(
-      "PERSIST_FAILED",
+    throw new PersistenceError(
       "Failed to durably record the prompt; not forwarded.",
-      { cause: (err as Error).message },
+      { cause: err },
     );
   }
 
@@ -291,7 +293,7 @@ export async function attach(
 ): Promise<void> {
   const row = await sessionRepo.findById(sessionId);
   if (!row)
-    throw new AppError("SESSION_NOT_FOUND", `Session ${sessionId} not found`);
+    throw new NotFoundError(`Session ${sessionId} not found`, "SESSION_NOT_FOUND");
 
   if (row.status !== "running") {
     startSse(reply);
@@ -313,7 +315,7 @@ export async function stop(
 ): Promise<{ session_id: string; status: string }> {
   const row = await sessionRepo.findById(sessionId);
   if (!row)
-    throw new AppError("SESSION_NOT_FOUND", `Session ${sessionId} not found`);
+    throw new NotFoundError(`Session ${sessionId} not found`, "SESSION_NOT_FOUND");
 
   const session = activeSessions.get(sessionId);
   if (session) {

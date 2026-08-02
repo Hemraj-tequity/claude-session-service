@@ -71,11 +71,11 @@ describe("buildApp", () => {
   });
 
   describe("error handler", () => {
-    it("converts a thrown AppError into its mapped status code and JSON body", async () => {
+    it("converts a thrown AppError into its mapped status code and the standardized JSON body", async () => {
       stop.mockRejectedValue(
-        new (await import("../lib/errors.js")).AppError(
-          "SESSION_NOT_FOUND",
+        new (await import("../lib/errors.js")).NotFoundError(
           "Session x not found",
+          "SESSION_NOT_FOUND",
         ),
       );
 
@@ -88,11 +88,11 @@ describe("buildApp", () => {
 
       expect(res.statusCode).toBe(404);
       expect(res.json()).toMatchObject({
-        error: { code: "SESSION_NOT_FOUND", message: "Session x not found" },
+        error: { status: false, type: "SESSION_NOT_FOUND", message: "Session x not found" },
       });
     });
 
-    it("converts a thrown ZodError into a 400 INVALID_INPUT body with treeified details", async () => {
+    it("converts a thrown ZodError into a 400 VALIDATION_ERROR body, without leaking treeified details to the client", async () => {
       const schema = z.object({ foo: z.string() });
       const zodError = schema.safeParse({}).error as ZodError;
       createSession.mockRejectedValue(zodError);
@@ -106,14 +106,17 @@ describe("buildApp", () => {
 
       expect(res.statusCode).toBe(400);
       const body = res.json<{
-        error: { code: string; message: string; details?: unknown };
+        error: { status: boolean; type: string; message: string; timestamp: string };
       }>();
-      expect(body.error.code).toBe("INVALID_INPUT");
-      expect(body.error.message).toBe("Malformed request body");
-      expect(body.error.details).toBeDefined();
+      expect(body.error).toEqual({
+        status: false,
+        type: "VALIDATION_ERROR",
+        message: "Malformed request body",
+        timestamp: expect.any(String) as string,
+      });
     });
 
-    it("maps Fastify's own schema-validation failures (statusCode < 500) to INVALID_INPUT", async () => {
+    it("maps Fastify's own schema-validation failures (statusCode < 500) to VALIDATION_ERROR", async () => {
       const app = await buildApp();
       const res = await app.inject({
         method: "GET",
@@ -122,12 +125,12 @@ describe("buildApp", () => {
       });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json()).toMatchObject({ error: { code: "INVALID_INPUT" } });
+      expect(res.json()).toMatchObject({ error: { status: false, type: "VALIDATION_ERROR" } });
       expect(attach).not.toHaveBeenCalled();
     });
 
-    it("maps an unrecognized thrown error to a 500 INTERNAL_ERROR body", async () => {
-      attach.mockRejectedValue(new Error("boom"));
+    it("maps an unrecognized thrown error to a 500 INTERNAL_ERROR body, without leaking its message", async () => {
+      attach.mockRejectedValue(new Error("some internal detail that must not reach the client"));
 
       const app = await buildApp();
       const res = await app.inject({
@@ -139,9 +142,22 @@ describe("buildApp", () => {
       expect(res.statusCode).toBe(500);
       expect(res.json()).toMatchObject({
         error: {
-          code: "INTERNAL_ERROR",
+          status: false,
+          type: "INTERNAL_ERROR",
           message: "An unexpected error occurred",
         },
+      });
+      const body = res.body;
+      expect(body).not.toContain("some internal detail");
+    });
+
+    it("returns the standardized JSON body for unmatched routes", async () => {
+      const app = await buildApp();
+      const res = await app.inject({ method: "GET", url: "/nope" });
+
+      expect(res.statusCode).toBe(404);
+      expect(res.json()).toMatchObject({
+        error: { status: false, type: "ROUTE_NOT_FOUND" },
       });
     });
   });

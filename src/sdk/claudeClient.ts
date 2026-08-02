@@ -6,6 +6,7 @@ import type {
   SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../config/env.js";
+import { ClaudeSdkError } from "../lib/errors.js";
 
 export type SpawnMode = "fresh" | "resume";
 
@@ -15,23 +16,28 @@ export const spawnQuery = (
   mode: SpawnMode,
   prompt: AsyncIterable<SDKUserMessage>,
   claudeAuthToken: string,
-): Query =>
-  query({
-    prompt,
-    options: {
-      ...(mode === "fresh" ? { sessionId } : { resume: sessionId }),
-      tools: config.allowedTools,
-      allowedTools: config.allowedTools,
-      permissionMode: "bypassPermissions",
-      allowDangerouslySkipPermissions: true,
-      persistSession: true,
-      includePartialMessages: true,
-      env: {
-        ...process.env,
-        CLAUDE_CODE_OAUTH_TOKEN: claudeAuthToken,
+): Query => {
+  try {
+    return query({
+      prompt,
+      options: {
+        ...(mode === "fresh" ? { sessionId } : { resume: sessionId }),
+        tools: config.allowedTools,
+        allowedTools: config.allowedTools,
+        permissionMode: "bypassPermissions",
+        allowDangerouslySkipPermissions: true,
+        persistSession: true,
+        includePartialMessages: true,
+        env: {
+          ...process.env,
+          CLAUDE_CODE_OAUTH_TOKEN: claudeAuthToken,
+        },
       },
-    },
-  });
+    });
+  } catch (err) {
+    throw new ClaudeSdkError("Failed to start the Claude SDK session", { cause: err });
+  }
+};
 
 const AUTH_ERROR_CODES: ReadonlySet<SDKAssistantMessageError> = new Set([
   "authentication_failed",

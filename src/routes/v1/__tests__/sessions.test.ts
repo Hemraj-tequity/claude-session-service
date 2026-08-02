@@ -17,8 +17,11 @@ vi.mock('../../../sessions/SessionManager.js', () => ({
 
 async function buildSessionsApp() {
   vi.resetModules();
+  // Import fresh (post-reset) so its AppError class matches the one auth.js/sessions.js throw.
   const { registerSessionRoutes } = await import('../sessions.js');
+  const { fastifyErrorHandler } = await import('../../../lib/errors.js');
   const app = Fastify();
+  app.setErrorHandler(fastifyErrorHandler);
   await app.register(registerSessionRoutes);
   await app.ready();
   return app;
@@ -116,7 +119,7 @@ describe('registerSessionRoutes', () => {
       expect(submitInputMock).not.toHaveBeenCalled();
     });
 
-    it('returns 400 INVALID_INPUT when content is missing', async () => {
+    it('returns 400 VALIDATION_ERROR when content is missing', async () => {
       const app = await buildSessionsApp();
       const res = await app.inject({
         method: 'POST',
@@ -126,11 +129,11 @@ describe('registerSessionRoutes', () => {
       });
 
       expect(res.statusCode).toBe(400);
-      expect(res.json()).toMatchObject({ error: { code: 'INVALID_INPUT' } });
+      expect(res.json()).toMatchObject({ error: { status: false, type: 'VALIDATION_ERROR' } });
       expect(submitInputMock).not.toHaveBeenCalled();
     });
 
-    it('returns 400 INVALID_INPUT when content is an empty string', async () => {
+    it('returns 400 VALIDATION_ERROR when content is an empty string', async () => {
       const app = await buildSessionsApp();
       const res = await app.inject({
         method: 'POST',

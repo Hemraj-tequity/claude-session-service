@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { treeifyError } from "zod";
 import { InputBodySchema } from "../../schemas/sessions.schema.js";
-import { AppError, sendError } from "../../lib/errors.js";
+import { ValidationError } from "../../lib/errors.js";
 import { extractClaudeToken } from "../../lib/auth.js";
 import * as SessionManager from "../../sessions/SessionManager.js";
 import { sessionIdParamSchema } from "../../utils/constant.js";
@@ -25,15 +25,9 @@ export const registerSessionRoutes = (app: FastifyInstance): void => {
     async (request, reply) => {
       const parsed = InputBodySchema.safeParse(request.body);
       if (!parsed.success) {
-        sendError(
-          reply,
-          new AppError(
-            "INVALID_INPUT",
-            "Body must be { content: string }",
-            treeifyError(parsed.error),
-          ),
-        );
-        return;
+        throw new ValidationError("Body must be { content: string }", {
+          logDetails: treeifyError(parsed.error),
+        });
       }
       await SessionManager.submitInput(
         request.params.sessionId,
