@@ -1,8 +1,10 @@
+// An async-iterable queue that lets a producer push items for a consumer to read via for-await-of.
 export class PushQueue<T> implements AsyncIterable<T> {
   private buffer: T[] = [];
   private pendingResolve: ((result: IteratorResult<T>) => void) | null = null;
   private closed = false;
 
+  // Enqueues an item, handing it directly to a waiting consumer if one is pending.
   push(item: T): void {
     if (this.closed) return;
     if (this.pendingResolve) {
@@ -14,6 +16,7 @@ export class PushQueue<T> implements AsyncIterable<T> {
     }
   }
 
+  // Marks the queue closed, signaling completion to any waiting consumer.
   close(): void {
     if (this.closed) return;
     this.closed = true;
@@ -24,6 +27,7 @@ export class PushQueue<T> implements AsyncIterable<T> {
     }
   }
 
+  // Provides the async iterator protocol used by for-await-of consumers.
   [Symbol.asyncIterator](): AsyncIterator<T> {
     return {
       next: (): Promise<IteratorResult<T>> => {

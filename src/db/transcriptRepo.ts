@@ -12,6 +12,7 @@ export interface TranscriptRow {
   createdAt: Date;
 }
 
+// Persists a single raw SDK event as the next entry in a session's transcript.
 export async function append(
   sessionId: string,
   subpath: string,
@@ -34,6 +35,7 @@ export async function append(
   );
 }
 
+// Returns the highest transcript sequence number recorded for a session, or -1 if none exist.
 export async function maxSequence(sessionId: string): Promise<number> {
   const result = await prisma.sessionTranscript.aggregate({
     where: { sessionId },
@@ -42,6 +44,7 @@ export async function maxSequence(sessionId: string): Promise<number> {
   return result._max.sequence ?? -1;
 }
 
+// Fetches transcript rows for a session with a sequence number greater than the given value.
 export async function findSince(
   sessionId: string,
   afterSequence: number,

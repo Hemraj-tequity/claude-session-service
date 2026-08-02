@@ -17,9 +17,9 @@ vi.mock('../../../sessions/SessionManager.js', () => ({
 
 async function buildSessionsApp() {
   vi.resetModules();
-  const { sessionRoutes } = await import('../sessions.js');
+  const { registerSessionRoutes } = await import('../sessions.js');
   const app = Fastify();
-  await app.register(sessionRoutes);
+  await app.register(registerSessionRoutes);
   await app.ready();
   return app;
 }
@@ -28,7 +28,7 @@ const VALID_UUID = '123e4567-e89b-12d3-a456-426614174000';
 const AUTH_TOKEN = 'caller-token';
 const AUTH_HEADERS = { authorization: `Bearer ${AUTH_TOKEN}` };
 
-describe('sessionRoutes', () => {
+describe('registerSessionRoutes', () => {
   beforeEach(() => {
     createSessionMock.mockReset();
     submitInputMock.mockReset().mockImplementation((_id: string, _content: string, reply: FastifyReply) => {

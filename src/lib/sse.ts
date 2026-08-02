@@ -2,6 +2,7 @@ import type { FastifyReply } from "fastify";
 import type { SseEvent } from "../sessions/types.js";
 import { logger } from "./logger.js";
 
+// Hijacks the reply and writes the SSE response headers to open the stream.
 export function startSse(reply: FastifyReply): void {
   reply.hijack();
   reply.raw.writeHead(200, {
@@ -12,6 +13,7 @@ export function startSse(reply: FastifyReply): void {
   });
 }
 
+// Writes a single SSE event frame to the reply, returning false if the write fails.
 export function writeSse(reply: FastifyReply, event: SseEvent): boolean {
   try {
     reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
@@ -22,6 +24,7 @@ export function writeSse(reply: FastifyReply, event: SseEvent): boolean {
   }
 }
 
+// Writes an SSE comment frame to keep an idle connection alive.
 export function writeHeartbeat(reply: FastifyReply): boolean {
   try {
     reply.raw.write(":hb\n\n");
@@ -31,10 +34,16 @@ export function writeHeartbeat(reply: FastifyReply): boolean {
   }
 }
 
+// Ends the underlying SSE connection.
 export function endSse(reply: FastifyReply): void {
-  reply.raw.end();
+  try {
+    reply.raw.end();
+  } catch (err) {
+    logger.warn({ err }, "SSE end failed");
+  }
 }
 
+// Builds an SSE event payload stamped with its type and current timestamp.
 export function makeSseEvent(
   type: SseEvent["type"],
   fields: Omit<SseEvent, "type" | "timestamp"> = {},

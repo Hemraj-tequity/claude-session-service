@@ -22,6 +22,7 @@ const STATUS_BY_CODE: Record<ErrorCode, number> = {
   INTERNAL_ERROR: 500,
 };
 
+// Domain error carrying a machine-readable code and the HTTP status it maps to.
 export class AppError extends Error {
   readonly code: ErrorCode;
   readonly statusCode: number;
@@ -36,6 +37,7 @@ export class AppError extends Error {
   }
 }
 
+// Builds the standard JSON error response body for a given error code and message.
 export function errorBody(code: ErrorCode, message: string, details?: unknown) {
   return {
     error: {
@@ -47,12 +49,14 @@ export function errorBody(code: ErrorCode, message: string, details?: unknown) {
   };
 }
 
+// Sends an AppError to the client with its mapped status code and JSON body.
 export function sendError(reply: FastifyReply, err: AppError): void {
   reply
     .code(err.statusCode)
     .send(errorBody(err.code, err.message, err.details));
 }
 
+// Fastify error handler that converts any thrown error into a consistent JSON error response.
 export function fastifyErrorHandler(
   err: FastifyError | AppError | ZodError,
   request: FastifyRequest,

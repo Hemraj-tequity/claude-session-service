@@ -23,7 +23,8 @@ const HEARTBEAT_INTERVAL_MS = 15_000;
 
 const activeSessions = new Map<string, ActiveSession>();
 
-function createShell(sessionId: string): ActiveSession {
+// Builds a fresh session in memory, when not-yet in-memory session state record.
+function createIdleSessionState(sessionId: string): ActiveSession {
   return {
     sessionId,
     query: null,
@@ -37,22 +38,25 @@ function createShell(sessionId: string): ActiveSession {
   };
 }
 
-function clearHeartbeat(session: ActiveSession): void {
+// Cancels a session's heartbeat timer, if one is running.
+function stopHeartbeat(session: ActiveSession): void {
   if (session.heartbeatTimer) {
     clearInterval(session.heartbeatTimer);
     session.heartbeatTimer = null;
   }
 }
 
-function armHeartbeat(session: ActiveSession): void {
-  clearHeartbeat(session);
+// Starts a periodic heartbeat for an idle attached reader, replacing any existing timer.
+function startHeartbeat(session: ActiveSession): void {
+  stopHeartbeat(session);
   if (!session.currentReader || session.isGenerating) return;
   session.heartbeatTimer = setInterval(() => {
     if (session.currentReader) writeHeartbeat(session.currentReader);
   }, HEARTBEAT_INTERVAL_MS);
 }
 
-function touch(session: ActiveSession): void {
+// Records the current time as the session's last-activity timestamp.
+function markSessionActive(session: ActiveSession): void {
   session.lastActivityAt = Date.now();
 }
 
@@ -75,17 +79,18 @@ function takeOverReader(session: ActiveSession, newReader: FastifyReply): void {
       }),
     );
   }
-  clearHeartbeat(session);
+  stopHeartbeat(session);
   session.currentReader = newReader;
   newReader.raw.once("close", () => {
     if (session.currentReader === newReader) {
       session.currentReader = null;
-      touch(session);
+      markSessionActive(session);
     }
   });
 }
 
-async function pumpMessages(
+// Consumes the SDK's message stream for a session, routing each message and reacting to terminal outcomes.
+async function consumeAgentMessageStream(
   session: ActiveSession,
   freshSpawn: boolean,
 ): Promise<void> {
@@ -101,7 +106,7 @@ async function pumpMessages(
           );
         });
       }
-      touch(session);
+      markSessionActive(session);
 
       const outcome = await routeMessage(session, msg);
 
@@ -122,8 +127,8 @@ async function pumpMessages(
         return;
       }
       if (outcome.turnDone) {
-        finishTurn(session);
-        if (!session.isGenerating) armHeartbeat(session);
+        completeCurrentTurn(session);
+        if (!session.isGenerating) startHeartbeat(session);
       }
     }
   } catch (err) {
@@ -139,12 +144,14 @@ async function pumpMessages(
   }
 }
 
-function finishTurn(session: ActiveSession): void {
+// Marks the in-flight turn as finished and releases anyone awaiting it.
+function completeCurrentTurn(session: ActiveSession): void {
   session.isGenerating = false;
   session.turnDone?.resolve();
   session.turnDone = null;
 }
 
+// Closes out a session's reader and subprocess, then marks it errored in the DB.
 async function terminateWithError(
   session: ActiveSession,
   code: ErrorCode,
@@ -157,7 +164,7 @@ async function terminateWithError(
     );
     session.currentReader = null;
   }
-  clearHeartbeat(session);
+  stopHeartbeat(session);
   session.query?.close();
   activeSessions.delete(session.sessionId);
 
@@ -168,10 +175,11 @@ async function terminateWithError(
     );
   });
 
-  finishTurn(session);
+  completeCurrentTurn(session);
 }
 
-async function ensureLive(
+// Returns the session's live in-memory state, spawning the SDK query if it isn't already running.
+async function getOrStartLiveSession(
   sessionId: string,
   claudeToken: string,
 ): Promise<ActiveSession> {
@@ -188,7 +196,7 @@ async function ensureLive(
     );
   }
 
-  const session = existing ?? createShell(sessionId);
+  const session = existing ?? createIdleSessionState(sessionId);
   activeSessions.set(sessionId, session);
 
   const mode: SpawnMode = row.sdkStarted ? "resume" : "fresh";
@@ -197,11 +205,12 @@ async function ensureLive(
   }
 
   session.query = spawnQuery(sessionId, mode, session.inputQueue, claudeToken);
-  void pumpMessages(session, mode === "fresh");
+  void consumeAgentMessageStream(session, mode === "fresh");
 
   return session;
 }
 
+// Creates a new session record and registers its idle in-memory state.
 export async function createSession(): Promise<{
   session_id: string;
   status: string;
@@ -209,7 +218,7 @@ export async function createSession(): Promise<{
 }> {
   const sessionId = randomUUID();
   const row = await sessionRepo.createSession(sessionId);
-  activeSessions.set(sessionId, createShell(sessionId));
+  activeSessions.set(sessionId, createIdleSessionState(sessionId));
   return {
     session_id: row.sessionId,
     status: row.status,
@@ -217,13 +226,14 @@ export async function createSession(): Promise<{
   };
 }
 
+// Records the caller's prompt, forwards it to the live session, and streams the reply over SSE until the turn completes.
 export async function submitInput(
   sessionId: string,
   content: string,
   reply: FastifyReply,
   claudeToken: string,
 ): Promise<void> {
-  const session = await ensureLive(sessionId, claudeToken);
+  const session = await getOrStartLiveSession(sessionId, claudeToken);
 
   try {
     await historyRepo.insertMessage(sessionId, "user", content);
@@ -241,7 +251,7 @@ export async function submitInput(
 
   startSse(reply);
   takeOverReader(session, reply);
-  clearHeartbeat(session);
+  stopHeartbeat(session);
 
   session.isGenerating = true;
   session.turnDone = createDeferred();
@@ -259,7 +269,8 @@ export async function submitInput(
   }
 }
 
-async function replayPersisted(
+// Replays a session's persisted transcript over SSE, for readers joining after it stopped or resuming mid-stream.
+async function replayPersistedTranscript(
   sessionId: string,
   reply: FastifyReply,
 ): Promise<void> {
@@ -272,6 +283,7 @@ async function replayPersisted(
   }
 }
 
+// Attaches an SSE reader to a session, replaying its history and, if running, taking over its live stream.
 export async function attach(
   sessionId: string,
   reply: FastifyReply,
@@ -283,16 +295,16 @@ export async function attach(
 
   if (row.status !== "running") {
     startSse(reply);
-    await replayPersisted(sessionId, reply);
+    await replayPersistedTranscript(sessionId, reply);
     closeReader(reply, makeSseEvent("done", {}));
     return;
   }
 
-  const session = await ensureLive(sessionId, claudeToken);
+  const session = await getOrStartLiveSession(sessionId, claudeToken);
   startSse(reply);
-  await replayPersisted(sessionId, reply);
+  await replayPersistedTranscript(sessionId, reply);
   takeOverReader(session, reply);
-  if (!session.isGenerating) armHeartbeat(session);
+  if (!session.isGenerating) startHeartbeat(session);
 }
 
 /** Interrupts and tears down a session's live subprocess (if any) and marks it stopped in the DB. */
@@ -305,7 +317,7 @@ export async function stop(
 
   const session = activeSessions.get(sessionId);
   if (session) {
-    clearHeartbeat(session);
+    stopHeartbeat(session);
     if (session.isGenerating) {
       await session.query?.interrupt().catch(() => {});
     }
@@ -315,7 +327,7 @@ export async function stop(
     }
     session.query?.close();
     session.inputQueue.close();
-    finishTurn(session);
+    completeCurrentTurn(session);
     activeSessions.delete(sessionId);
   }
 

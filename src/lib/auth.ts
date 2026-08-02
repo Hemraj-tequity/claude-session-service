@@ -9,6 +9,7 @@ declare module 'fastify' {
 
 const BEARER_PREFIX = 'Bearer ';
 
+// Extracts and validates the caller's Claude auth token from the Authorization header.
 export function extractClaudeToken(headers: FastifyRequest['headers']): string {
   const raw = headers.authorization;
   if (typeof raw !== 'string' || !raw.startsWith(BEARER_PREFIX)) {

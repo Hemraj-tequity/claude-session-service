@@ -6,7 +6,8 @@ import { extractClaudeToken } from "../../lib/auth.js";
 import * as SessionManager from "../../sessions/SessionManager.js";
 import { sessionIdParamSchema } from "../../utils/constant.js";
 
-export const sessionRoutes = (app: FastifyInstance): void => {
+// Registers the session lifecycle routes (create, submit input, attach, stop) with their auth hook.
+export const registerSessionRoutes = (app: FastifyInstance): void => {
   app.decorateRequest("claudeToken", "");
   app.addHook("onRequest", (request, _reply, done) => {
     request.claudeToken = extractClaudeToken(request.headers);

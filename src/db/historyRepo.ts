@@ -10,6 +10,7 @@ export interface HistoryRow {
   createdAt: Date;
 }
 
+// Persists a single chat message (user or assistant) to the session history table.
 export async function insertMessage(
   sessionId: string,
   role: HistoryRole,

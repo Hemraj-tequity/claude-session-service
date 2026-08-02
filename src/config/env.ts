@@ -11,14 +11,16 @@ const EnvSchema = z.object({
     .default("info"),
 });
 
-function parseCsv(value: string): string[] {
+// Splits a comma-separated env value into trimmed, non-empty entries.
+function parseCommaSeparatedList(value: string): string[] {
   return value
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
 
-function loadConfig() {
+// Validates process.env against the schema and builds the app's typed config object.
+function loadEnvironmentConfig() {
   const parsed = EnvSchema.safeParse(process.env);
   if (!parsed.success) {
     console.error(
@@ -33,9 +35,9 @@ function loadConfig() {
     databaseUrl: env.DATABASE_URL,
     port: env.PORT,
     nodeEnv: env.NODE_ENV,
-    allowedTools: parseCsv(env.ALLOWED_TOOLS),
+    allowedTools: parseCommaSeparatedList(env.ALLOWED_TOOLS),
     logLevel: env.LOG_LEVEL,
   };
 }
 
-export const config = loadConfig();
+export const config = loadEnvironmentConfig();

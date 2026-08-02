@@ -9,6 +9,7 @@ import { config } from "../config/env.js";
 
 export type SpawnMode = "fresh" | "resume";
 
+// Claude Agent SDK query for a session, either starting fresh or resuming.
 export const spawnQuery = (
   sessionId: string,
   mode: SpawnMode,
@@ -37,6 +38,7 @@ const AUTH_ERROR_CODES: ReadonlySet<SDKAssistantMessageError> = new Set([
   "oauth_org_not_allowed",
 ]);
 
+// Checks whether an assistant message reports a Claude authentication failure.
 export function isAuthError(msg: SDKAssistantMessage): boolean {
   return msg.error !== undefined && AUTH_ERROR_CODES.has(msg.error);
 }

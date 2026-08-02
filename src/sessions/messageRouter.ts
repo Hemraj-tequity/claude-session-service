@@ -26,19 +26,22 @@ export interface Translation {
   turnDone?: { isError: boolean; message: string };
 }
 
-function subpathFor(msg: SDKMessage): string {
+// Derives the transcript subpath for a message from its parent tool-use id, defaulting to "root".
+function resolveTranscriptSubpath(msg: SDKMessage): string {
   const parentToolUseId = (msg as { parent_tool_use_id?: string | null })
     .parent_tool_use_id;
   return parentToolUseId ?? "root";
 }
 
-function textOf(blocks: ContentBlock[]): string {
+// Concatenates the text of all text content blocks into a single string.
+function extractPlainText(blocks: ContentBlock[]): string {
   return blocks
     .filter((b) => b.type === "text" && typeof b.text === "string")
     .map((b) => b.text)
     .join("");
 }
 
+// Converts a raw SDK message into SSE events, history text, and turn-completion info.
 export function translateMessage(msg: SDKMessage): Translation {
   const events: SseEvent[] = [];
   let historyText: string | null = null;
@@ -82,7 +85,7 @@ export function translateMessage(msg: SDKMessage): Translation {
           );
         }
       }
-      const text = textOf(blocks);
+      const text = extractPlainText(blocks);
       if (text.length > 0) historyText = text;
       break;
     }
@@ -153,7 +156,7 @@ export async function routeMessage(
     }
   }
 
-  const subpath = subpathFor(msg);
+  const subpath = resolveTranscriptSubpath(msg);
   const writes: Promise<unknown>[] = [
     transcriptRepo
       .append(session.sessionId, subpath, session.seq, msg.type, msg)

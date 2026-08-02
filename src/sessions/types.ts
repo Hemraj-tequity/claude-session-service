@@ -23,6 +23,7 @@ export interface Deferred<T = void> {
   resolve: (value: T) => void;
 }
 
+// Creates a promise along with an external function that resolves it.
 export function createDeferred<T = void>(): Deferred<T> {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((res) => {

@@ -10,16 +10,19 @@ export interface SessionRow {
   createdAt: Date;
 }
 
+// Inserts a new session row with the given id.
 export async function createSession(sessionId: string): Promise<SessionRow> {
   return withRetry(() => prisma.session.create({ data: { sessionId } }), {
     label: "sessionRepo.create",
   });
 }
 
+// Looks up a session row by id, returning null if it doesn't exist.
 export async function findById(sessionId: string): Promise<SessionRow | null> {
   return prisma.session.findUnique({ where: { sessionId } });
 }
 
+// Flags a session as having started its underlying Claude SDK process.
 export async function markSdkStarted(sessionId: string): Promise<void> {
   await withRetry(
     () =>
@@ -31,6 +34,7 @@ export async function markSdkStarted(sessionId: string): Promise<void> {
   );
 }
 
+// Updates a session's status (e.g. running, stopped, error).
 export async function updateStatus(
   sessionId: string,
   status: SessionStatus,
@@ -43,6 +47,7 @@ export async function updateStatus(
   );
 }
 
+// Stamps a session's last-activity time with the current moment.
 export async function touchLastActivity(sessionId: string): Promise<void> {
   await withRetry(
     () =>
