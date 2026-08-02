@@ -1,17 +1,19 @@
-import 'dotenv/config';
-import { z } from 'zod';
+import "dotenv/config";
+import { z } from "zod";
 
 const EnvSchema = z.object({
-  DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
+  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
   PORT: z.coerce.number().int().positive().default(3000),
-  NODE_ENV: z.enum(['development', 'production']).default('development'),
-  ALLOWED_TOOLS: z.string().default(''),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+  NODE_ENV: z.enum(["development", "production"]).default("development"),
+  ALLOWED_TOOLS: z.string().default(""),
+  LOG_LEVEL: z
+    .enum(["fatal", "error", "warn", "info", "debug", "trace"])
+    .default("info"),
 });
 
 function parseCsv(value: string): string[] {
   return value
-    .split(',')
+    .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 }
@@ -19,8 +21,10 @@ function parseCsv(value: string): string[] {
 function loadConfig() {
   const parsed = EnvSchema.safeParse(process.env);
   if (!parsed.success) {
-    // Startup-time misconfiguration: fail loudly before the server does anything else.
-    console.error('Invalid environment configuration:', z.treeifyError(parsed.error));
+    console.error(
+      "Invalid environment configuration:",
+      z.treeifyError(parsed.error),
+    );
     process.exit(1);
   }
 

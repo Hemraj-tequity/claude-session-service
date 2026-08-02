@@ -1,8 +1,3 @@
-/**
- * Minimal push-based AsyncIterable. Passed as `query()`'s `prompt`, it's what
- * lets one Agent SDK subprocess serve many sequential `/input` calls instead
- * of being respawned per prompt.
- */
 export class PushQueue<T> implements AsyncIterable<T> {
   private buffer: T[] = [];
   private pendingResolve: ((result: IteratorResult<T>) => void) | null = null;
@@ -33,7 +28,10 @@ export class PushQueue<T> implements AsyncIterable<T> {
     return {
       next: (): Promise<IteratorResult<T>> => {
         if (this.buffer.length > 0) {
-          return Promise.resolve({ value: this.buffer.shift() as T, done: false });
+          return Promise.resolve({
+            value: this.buffer.shift() as T,
+            done: false,
+          });
         }
         if (this.closed) {
           return Promise.resolve({ value: undefined, done: true });

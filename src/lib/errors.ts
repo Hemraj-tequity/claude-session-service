@@ -70,7 +70,7 @@ export function fastifyErrorHandler(
       );
     return;
   }
-  // Fastify's own validation errors carry a statusCode (e.g. bad params schema).
+
   const statusCode = err.statusCode;
   if (typeof statusCode === "number" && statusCode < 500) {
     reply.code(statusCode).send(errorBody("INVALID_INPUT", err.message));

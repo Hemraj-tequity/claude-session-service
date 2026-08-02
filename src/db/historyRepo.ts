@@ -1,6 +1,6 @@
-import type { HistoryRole } from '@prisma/client';
-import { prisma } from '../lib/prisma.js';
-import { withRetry } from '../lib/retry.js';
+import type { HistoryRole } from "@prisma/client";
+import { prisma } from "../lib/prisma.js";
+import { withRetry } from "../lib/retry.js";
 
 export interface HistoryRow {
   id: number;
@@ -17,7 +17,6 @@ export async function insertMessage(
 ): Promise<HistoryRow> {
   return withRetry(
     () => prisma.sessionHistory.create({ data: { sessionId, role, content } }),
-    { label: 'historyRepo.insertMessage' },
+    { label: "historyRepo.insertMessage" },
   );
 }
-

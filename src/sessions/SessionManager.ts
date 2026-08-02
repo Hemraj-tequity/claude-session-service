@@ -171,12 +171,6 @@ async function terminateWithError(
   finishTurn(session);
 }
 
-/**
- * Returns the live ActiveSession for sessionId, spawning or resuming the
- * underlying Agent SDK subprocess if it isn't already resident in memory.
- * Spawn mode is driven by the DB's `sdkStarted` flag (not an in-memory flag),
- * so resurrection is correct across our own service restarts.
- */
 async function ensureLive(
   sessionId: string,
   claudeToken: string,
@@ -208,7 +202,6 @@ async function ensureLive(
   return session;
 }
 
-// Creates a new session row and its in-memory
 export async function createSession(): Promise<{
   session_id: string;
   status: string;
@@ -224,11 +217,6 @@ export async function createSession(): Promise<{
   };
 }
 
-/**
- * Forwards one prompt to the session's Claude subprocess (spawning/resuming it
- * if needed) and streams the resulting turn back over `reply` as SSE. Resolves
- * once the turn completes and the stream has been ended.
- */
 export async function submitInput(
   sessionId: string,
   content: string,
@@ -237,8 +225,6 @@ export async function submitInput(
 ): Promise<void> {
   const session = await ensureLive(sessionId, claudeToken);
 
-  // Persisted BEFORE forwarding to the SDK -- if this fails, the request
-  // never reaches the SDK and the caller gets a clean error, not a stream.
   try {
     await historyRepo.insertMessage(sessionId, "user", content);
   } catch (err) {
@@ -249,8 +235,6 @@ export async function submitInput(
     );
   }
 
-  // Serialize concurrent /input calls on the same session -- one underlying
-  // conversation stream can't have two prompts in flight at once.
   if (session.isGenerating && session.turnDone) {
     await session.turnDone.promise;
   }
@@ -281,8 +265,6 @@ async function replayPersisted(
 ): Promise<void> {
   const rows = await transcriptRepo.findSince(sessionId, -1);
   for (const row of rows) {
-    // Stored verbatim as the original SDKMessage; re-run through the same
-    // translator used live so a reattaching client sees identical event shapes.
     const { events } = translateMessage(row.entry as never);
     for (const event of events) {
       writeSse(reply, event);
@@ -290,12 +272,6 @@ async function replayPersisted(
   }
 }
 
-/**
- * Attaches `reply` as the SSE reader for a session: replays its persisted
- * transcript first, then (if the session is still running) takes over as the
- * live reader for any turn already or subsequently in flight. If the session
- * has already stopped, replays the transcript and ends the stream immediately.
- */
 export async function attach(
   sessionId: string,
   reply: FastifyReply,
