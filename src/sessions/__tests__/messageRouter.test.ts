@@ -33,6 +33,9 @@ function session(overrides: Partial<ActiveSession> = {}): ActiveSession {
     turnDone: null,
     seq: 0,
     lastActivityAt: Date.now(),
+    workspaceReady: false,
+    workspaceDir: null,
+    pendingSync: null,
     ...overrides,
   };
 }

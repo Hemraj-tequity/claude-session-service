@@ -13,6 +13,9 @@ const {
   writeHeartbeatMock,
   endSseMock,
   loggerMock,
+  prepareWorkspaceMock,
+  syncWorkspaceMock,
+  destroyWorkspaceMock,
 } = vi.hoisted(() => ({
   sessionRepoMock: {
     createSession: vi.fn(),
@@ -31,6 +34,9 @@ const {
   writeHeartbeatMock: vi.fn(),
   endSseMock: vi.fn(),
   loggerMock: { warn: vi.fn(), error: vi.fn() },
+  prepareWorkspaceMock: vi.fn(),
+  syncWorkspaceMock: vi.fn(),
+  destroyWorkspaceMock: vi.fn(),
 }));
 
 vi.mock('../../db/sessionRepo.js', () => sessionRepoMock);
@@ -40,6 +46,11 @@ vi.mock('../../sdk/claudeClient.js', () => ({ spawnQuery: spawnQueryMock }));
 vi.mock('../messageRouter.js', () => ({
   routeMessage: routeMessageMock,
   translateMessage: translateMessageMock,
+}));
+vi.mock('../../storage/projectWorkspace.js', () => ({
+  prepareWorkspace: prepareWorkspaceMock,
+  syncWorkspace: syncWorkspaceMock,
+  destroyWorkspace: destroyWorkspaceMock,
 }));
 vi.mock('../../lib/logger.js', () => ({ logger: loggerMock }));
 vi.mock('../../lib/sse.js', async () => {
@@ -150,6 +161,9 @@ describe('SessionManager', () => {
     sessionRepoMock.updateStatus.mockResolvedValue(undefined);
     sessionRepoMock.markSdkStarted.mockResolvedValue(undefined);
     sessionRepoMock.touchLastActivity.mockResolvedValue(undefined);
+    prepareWorkspaceMock.mockReset().mockResolvedValue('/workspace/s1');
+    syncWorkspaceMock.mockReset().mockResolvedValue(undefined);
+    destroyWorkspaceMock.mockReset().mockResolvedValue(undefined);
   });
 
   describe('createSession', () => {
@@ -209,7 +223,7 @@ describe('SessionManager', () => {
       fq.push({ type: 'result', subtype: 'success', result: 'ok', num_turns: 1 });
       await promise;
 
-      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token');
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token', '/workspace/s1');
       expect(historyRepoMock.insertMessage).toHaveBeenCalledWith('s1', 'user', 'hello');
       expect(startSseMock).toHaveBeenCalledWith(reply);
       expect(writeSseMock).toHaveBeenCalledWith(reply, expect.objectContaining({ type: 'done' }));
@@ -230,7 +244,7 @@ describe('SessionManager', () => {
       fq.push({ type: 'result', subtype: 'success', result: 'ok', num_turns: 1 });
       await promise;
 
-      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'resume', expect.anything(), 'token');
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'resume', expect.anything(), 'token', '/workspace/s1');
     });
 
     it('marks the SDK started once a fresh spawn reports its init message', async () => {
@@ -429,7 +443,7 @@ describe('SessionManager', () => {
       const reply = fakeReply();
       await attach('s1', reply, 'token');
 
-      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token');
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token', '/workspace/s1');
       expect(startSseMock).toHaveBeenCalledWith(reply);
       expect(reply.onceMock).toHaveBeenCalledWith('close', expect.any(Function));
     });
@@ -583,6 +597,94 @@ describe('SessionManager', () => {
 
       await expect(stop('s1')).resolves.toEqual({ session_id: 's1', status: 'stopped' });
       await submitPromise;
+    });
+  });
+
+  describe('workspace persistence', () => {
+    it('prepares the workspace once and reuses it as cwd on later spawns', async () => {
+      const { submitInput } = await freshSessionManager();
+      sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
+      const fq = createFakeQuery();
+      spawnQueryMock.mockReturnValue(fq.query);
+      routeMessageMock.mockResolvedValue({ turnDone: { isError: false, message: 'ok' } });
+
+      const reply = fakeReply();
+      const promise = submitInput('s1', 'hello', reply, 'token');
+      await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
+      fq.push({ type: 'result', subtype: 'success', result: 'ok', num_turns: 1 });
+      await promise;
+
+      expect(prepareWorkspaceMock).toHaveBeenCalledTimes(1);
+      expect(prepareWorkspaceMock).toHaveBeenCalledWith('s1');
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token', '/workspace/s1');
+    });
+
+    it('syncs the workspace back to Storage after a turn completes', async () => {
+      const { submitInput } = await freshSessionManager();
+      sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
+      const fq = createFakeQuery();
+      spawnQueryMock.mockReturnValue(fq.query);
+      routeMessageMock.mockResolvedValue({ turnDone: { isError: false, message: 'ok' } });
+
+      const reply = fakeReply();
+      const promise = submitInput('s1', 'hello', reply, 'token');
+      await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
+      fq.push({ type: 'result', subtype: 'success', result: 'ok', num_turns: 1 });
+      await promise;
+
+      await vi.waitFor(() => expect(syncWorkspaceMock).toHaveBeenCalledWith('s1'));
+    });
+
+    it('syncs then deletes the local workspace once stop() tears down a live session', async () => {
+      const { submitInput, stop } = await freshSessionManager();
+      sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
+      const fq = createFakeQuery();
+      spawnQueryMock.mockReturnValue(fq.query);
+      routeMessageMock.mockResolvedValue({});
+
+      const reply = fakeReply();
+      const submitPromise = submitInput('s1', 'hello', reply, 'token');
+      await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
+
+      await stop('s1');
+
+      expect(syncWorkspaceMock).toHaveBeenCalledWith('s1');
+      expect(destroyWorkspaceMock).toHaveBeenCalledWith('s1');
+      await submitPromise;
+    });
+
+    it('does not delete the local workspace when the final sync fails', async () => {
+      syncWorkspaceMock.mockRejectedValue(new Error('storage unreachable'));
+      const { submitInput, stop } = await freshSessionManager();
+      sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
+      const fq = createFakeQuery();
+      spawnQueryMock.mockReturnValue(fq.query);
+      routeMessageMock.mockResolvedValue({});
+
+      const reply = fakeReply();
+      const submitPromise = submitInput('s1', 'hello', reply, 'token');
+      await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
+
+      await stop('s1');
+
+      expect(destroyWorkspaceMock).not.toHaveBeenCalled();
+      await submitPromise;
+    });
+
+    it('syncs and tears down the workspace when the session terminates with an error', async () => {
+      const { submitInput } = await freshSessionManager();
+      sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
+      const fq = createFakeQuery();
+      spawnQueryMock.mockReturnValue(fq.query);
+
+      const reply = fakeReply();
+      const promise = submitInput('s1', 'hello', reply, 'token');
+      await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
+      fq.fail(new Error('subprocess crashed'));
+      await promise;
+
+      expect(syncWorkspaceMock).toHaveBeenCalledWith('s1');
+      expect(destroyWorkspaceMock).toHaveBeenCalledWith('s1');
     });
   });
 });

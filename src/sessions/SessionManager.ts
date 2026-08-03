@@ -9,6 +9,7 @@ import {
   PersistenceError,
   ClaudeAuthError,
   ChunkError,
+  InternalServerError,
 } from "../lib/errors.js";
 import {
   startSse,
@@ -21,6 +22,7 @@ import * as sessionRepo from "../db/sessionRepo.js";
 import * as historyRepo from "../db/historyRepo.js";
 import * as transcriptRepo from "../db/transcriptRepo.js";
 import { spawnQuery, type SpawnMode } from "../sdk/claudeClient.js";
+import { prepareWorkspace, syncWorkspace, destroyWorkspace } from "../storage/projectWorkspace.js";
 import { PushQueue } from "./inputQueue.js";
 import { routeMessage, translateMessage } from "./messageRouter.js";
 import { createDeferred, type ActiveSession } from "./types.js";
@@ -42,7 +44,46 @@ function createIdleSessionState(sessionId: string): ActiveSession {
     turnDone: null,
     seq: 0,
     lastActivityAt: Date.now(),
+    workspaceReady: false,
+    workspaceDir: null,
+    pendingSync: null,
   };
+}
+
+// Syncs session's local workspace back to Storage, at most once at a time.
+// Never rejects - a failed sync is reported via { ok: false } and logged.
+function syncWorkspaceNow(session: ActiveSession): Promise<{ ok: boolean }> {
+  if (session.pendingSync) return session.pendingSync;
+
+  const run = async (): Promise<{ ok: boolean }> => {
+    try {
+      await syncWorkspace(session.sessionId);
+      return { ok: true };
+    } catch (err) {
+      logger.error({ err, sessionId: session.sessionId }, "Workspace sync failed (non-fatal)");
+      return { ok: false };
+    }
+  };
+
+  const pending = run().finally(() => {
+    if (session.pendingSync === pending) session.pendingSync = null;
+  });
+  session.pendingSync = pending;
+  return pending;
+}
+
+// Deletes session's local workspace, but only once its files are durably synced -- never destroys the only copy of unsaved work.
+async function teardownWorkspace(session: ActiveSession): Promise<void> {
+  if (!session.workspaceReady) return;
+
+  const result = await syncWorkspaceNow(session);
+  if (!result.ok) {
+    logger.warn({ sessionId: session.sessionId }, "Skipping workspace cleanup after a failed final sync");
+    return;
+  }
+  await destroyWorkspace(session.sessionId).catch((err) => {
+    logger.warn({ err, sessionId: session.sessionId }, "destroyWorkspace failed (non-fatal)");
+  });
 }
 
 // Cancels a session's heartbeat timer, if one is running.
@@ -136,6 +177,7 @@ async function consumeAgentMessageStream(
       }
       if (outcome.turnDone) {
         completeCurrentTurn(session);
+        void syncWorkspaceNow(session);
         if (!session.isGenerating) startHeartbeat(session);
       }
     }
@@ -181,6 +223,8 @@ async function terminateWithError(
     );
   });
 
+  await teardownWorkspace(session);
+
   completeCurrentTurn(session);
 }
 
@@ -207,7 +251,16 @@ async function getOrStartLiveSession(
     session.seq = (await transcriptRepo.maxSequence(sessionId)) + 1;
   }
 
-  session.query = spawnQuery(sessionId, mode, session.inputQueue, claudeToken);
+  if (!session.workspaceReady) {
+    session.workspaceDir = await prepareWorkspace(sessionId);
+    session.workspaceReady = true;
+  }
+  const workspaceDir = session.workspaceDir;
+  if (!workspaceDir) {
+    throw new InternalServerError(`Workspace was not prepared for session ${sessionId}`);
+  }
+
+  session.query = spawnQuery(sessionId, mode, session.inputQueue, claudeToken, workspaceDir);
   void consumeAgentMessageStream(session, mode === "fresh");
 
   return session;
@@ -331,6 +384,8 @@ export async function stop(
     session.inputQueue.close();
     completeCurrentTurn(session);
     activeSessions.delete(sessionId);
+
+    await teardownWorkspace(session);
   }
 
   await sessionRepo.updateStatus(sessionId, "stopped");

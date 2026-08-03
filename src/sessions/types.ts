@@ -42,4 +42,7 @@ export interface ActiveSession {
   turnDone: Deferred | null;
   seq: number;
   lastActivityAt: number;
+  workspaceReady: boolean;
+  workspaceDir: string | null;
+  pendingSync: Promise<{ ok: boolean }> | null;
 }
