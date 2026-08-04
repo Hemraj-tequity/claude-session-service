@@ -147,15 +147,18 @@ export async function routeMessage(
   session: ActiveSession,
   msg: SDKMessage,
 ): Promise<RouteOutcome> {
+  // Convert SDK response to the required SSE format for frontend
   const { events, historyText, authError, turnDone } = translateMessage(msg);
   const outcome: RouteOutcome = { authError: authError || undefined, turnDone };
 
+  // send event to the frontend
   if (session.currentReader) {
     for (const sseEvent of events) {
       writeSse(session.currentReader, sseEvent);
     }
   }
 
+  // save transcript in database
   const subpath = resolveTranscriptSubpath(msg);
   const writes: Promise<unknown>[] = [
     transcriptRepo
@@ -164,12 +167,15 @@ export async function routeMessage(
         session.seq += 1;
       }),
   ];
+  
+  // save history in database
   if (historyText !== null) {
     writes.push(
       historyRepo.insertMessage(session.sessionId, "assistant", historyText),
     );
   }
 
+  // save everything in database - parallel writes
   const results = await Promise.allSettled(writes);
   const failure = results.find(
     (r): r is PromiseRejectedResult => r.status === "rejected",
@@ -178,6 +184,7 @@ export async function routeMessage(
     outcome.persistFailed = failure.reason as Error;
   }
 
+  // Update last activity in database
   if (outcome.turnDone) {
     sessionRepo.touchLastActivity(session.sessionId).catch((err) => {
       logger.warn(

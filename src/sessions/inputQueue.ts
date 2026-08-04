@@ -1,4 +1,5 @@
-// An async-iterable queue that lets a producer push items for a consumer to read via for-await-of.
+/****************** move generated chunks partially in server memory and save them as they come ******************/
+
 export class PushQueue<T> implements AsyncIterable<T> {
   private buffer: T[] = [];
   private pendingResolve: ((result: IteratorResult<T>) => void) | null = null;
