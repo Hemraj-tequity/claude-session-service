@@ -26,7 +26,11 @@ export interface Translation {
   turnDone?: { isError: boolean; message: string };
 }
 
-// Derives the transcript subpath for a message from its parent tool-use id, defaulting to "root".
+/*
+  checks whether the message belongs to a tool execution.
+  If it does, it returns that tool's ID (like "tool_123");
+  otherwise, it returns "root"
+*/
 function resolveTranscriptSubpath(msg: SDKMessage): string {
   const parentToolUseId = (msg as { parent_tool_use_id?: string | null })
     .parent_tool_use_id;
@@ -168,7 +172,7 @@ export async function routeMessage(
       }),
   ];
   
-  // save history in database
+  // Insert history in database
   if (historyText !== null) {
     writes.push(
       historyRepo.insertMessage(session.sessionId, "assistant", historyText),
@@ -189,7 +193,7 @@ export async function routeMessage(
     sessionRepo.touchLastActivity(session.sessionId).catch((err) => {
       logger.warn(
         { err, sessionId: session.sessionId },
-        "touchLastActivity failed (non-fatal)",
+        "Last Activity failed",
       );
     });
   }

@@ -53,7 +53,11 @@ function stopHeartbeat(session: ActiveSession): void {
   }
 }
 
-// Starts a periodic heartbeat for an idle attached reader, replacing any existing timer.
+/*
+  Nobody is sending anything. Maybe this connection is dead."
+  Every 15 seconds server sends a message like ...
+  The browser ignores it. But the connection stays alive.
+*/
 function startHeartbeat(session: ActiveSession): void {
   stopHeartbeat(session);
   if (!session.currentReader || session.isGenerating) return;
@@ -236,6 +240,7 @@ export async function submitInput(
   reply: FastifyReply,
   claudeToken: string,
 ): Promise<void> {
+  // Get and Create a Claude Session
   const session = await getOrStartLiveSession(sessionId, claudeToken);
 
   try {
@@ -247,24 +252,30 @@ export async function submitInput(
     );
   }
 
+  // Check if Claude is Already Busy
   if (session.isGenerating && session.turnDone) {
     await session.turnDone.promise;
   }
 
+  // Start SSE
   startSse(reply);
   takeOverReader(session, reply);
   stopHeartbeat(session);
 
   session.isGenerating = true;
   session.turnDone = createDeferred();
+
+  // Queue User Message
   session.inputQueue.push({
     type: "user",
     message: { role: "user", content },
     parent_tool_use_id: null,
   });
 
+  // Wait Until Claude Finishes
   await session.turnDone.promise;
 
+  // Close SSE
   if (session.currentReader === reply) {
     closeReader(reply, makeSseEvent("done", {}));
     session.currentReader = null;
@@ -276,9 +287,14 @@ async function replayPersistedTranscript(
   sessionId: string,
   reply: FastifyReply,
 ): Promise<void> {
+  // Give all rows whose sequence number is greater than -1
   const rows = await transcriptRepo.findSince(sessionId, -1);
+
+  // Translate each row's entry into Claude-formatted events.
   for (const row of rows) {
     const { events } = translateMessage(row.entry as never);
+
+    // For each event, write it to the reply stream
     for (const event of events) {
       writeSse(reply, event);
     }
@@ -298,6 +314,7 @@ export async function attach(
   if (row.status !== "running") {
     startSse(reply);
     await replayPersistedTranscript(sessionId, reply);
+    // Sends a final "done" event.
     closeReader(reply, makeSseEvent("done", {}));
     return;
   }

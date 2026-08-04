@@ -1,5 +1,6 @@
 import type { FastifyRequest } from 'fastify';
 import { UnauthorizedError } from './errors.js';
+import { BEARER_PREFIX } from './constant.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -7,10 +8,7 @@ declare module 'fastify' {
   }
 }
 
-const BEARER_PREFIX = 'Bearer ';
-
-// Extracts and validates the caller's Claude auth token from the Authorization header.
-export function extractClaudeToken(headers: FastifyRequest['headers']): string {
+export const extractClaudeToken = (headers: FastifyRequest['headers']): string => {
   const raw = headers.authorization;
   if (typeof raw !== 'string' || !raw.startsWith(BEARER_PREFIX)) {
     throw new UnauthorizedError('Missing or malformed Authorization header; expected "Bearer <claude-token>"');

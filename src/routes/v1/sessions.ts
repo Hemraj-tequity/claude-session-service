@@ -24,11 +24,13 @@ export const registerSessionRoutes = (app: FastifyInstance): void => {
     { schema: { params: sessionIdParamSchema } },
     async (request, reply) => {
       const parsed = InputBodySchema.safeParse(request.body);
+
       if (!parsed.success) {
         throw new ValidationError("Body must be { content: string }", {
           logDetails: treeifyError(parsed.error),
         });
       }
+
       await SessionManager.submitInput(
         request.params.sessionId,
         parsed.data.content,
