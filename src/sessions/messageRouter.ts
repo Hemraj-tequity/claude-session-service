@@ -6,6 +6,13 @@ import { writeSse, makeSseEvent } from "../lib/sse.js";
 import { isAuthError } from "../sdk/claudeClient.js";
 import { logger } from "../lib/logger.js";
 import type { ActiveSession, SseEvent } from "./types.js";
+import {
+  ERROR_LIST_DELIMITER,
+  ERROR_MESSAGES,
+  MESSAGE_ROLE,
+  ROOT_SUBPATH,
+  SSE_EVENT_TYPE,
+} from "../constants/index.js";
 
 interface ContentBlock {
   type: string;
@@ -34,7 +41,7 @@ export interface Translation {
 function resolveTranscriptSubpath(msg: SDKMessage): string {
   const parentToolUseId = (msg as { parent_tool_use_id?: string | null })
     .parent_tool_use_id;
-  return parentToolUseId ?? "root";
+  return parentToolUseId ?? ROOT_SUBPATH;
 }
 
 // Concatenates the text of all text content blocks into a single string.
@@ -56,7 +63,7 @@ export function translateMessage(msg: SDKMessage): Translation {
     case "system": {
       if (msg.subtype === "init") {
         events.push(
-          makeSseEvent("system_init", { model: msg.model, tools: msg.tools }),
+          makeSseEvent(SSE_EVENT_TYPE.SYSTEM_INIT, { model: msg.model, tools: msg.tools }),
         );
       }
       break;
@@ -70,7 +77,7 @@ export function translateMessage(msg: SDKMessage): Translation {
         event.type === "content_block_delta" &&
         event.delta?.type === "text_delta"
       ) {
-        events.push(makeSseEvent("chunk", { content: event.delta.text ?? "" }));
+        events.push(makeSseEvent(SSE_EVENT_TYPE.CHUNK, { content: event.delta.text ?? "" }));
       }
       break;
     }
@@ -81,7 +88,7 @@ export function translateMessage(msg: SDKMessage): Translation {
       for (const block of blocks) {
         if (block.type === "tool_use") {
           events.push(
-            makeSseEvent("tool_use", {
+            makeSseEvent(SSE_EVENT_TYPE.TOOL_USE, {
               toolUseId: block.id,
               toolName: block.name,
               input: block.input,
@@ -99,7 +106,7 @@ export function translateMessage(msg: SDKMessage): Translation {
       for (const block of blocks) {
         if (block.type === "tool_result") {
           events.push(
-            makeSseEvent("tool_result", {
+            makeSseEvent(SSE_EVENT_TYPE.TOOL_RESULT, {
               toolUseId: block.tool_use_id,
               content:
                 typeof block.content === "string"
@@ -115,7 +122,7 @@ export function translateMessage(msg: SDKMessage): Translation {
     case "result": {
       if (msg.subtype === "success") {
         events.push(
-          makeSseEvent("result", {
+          makeSseEvent(SSE_EVENT_TYPE.RESULT, {
             content: msg.result,
             isError: false,
             numTurns: msg.num_turns,
@@ -124,13 +131,13 @@ export function translateMessage(msg: SDKMessage): Translation {
         turnDone = { isError: false, message: msg.result };
       } else {
         events.push(
-          makeSseEvent("result", {
+          makeSseEvent(SSE_EVENT_TYPE.RESULT, {
             content: undefined,
             isError: true,
             numTurns: msg.num_turns,
           }),
         );
-        turnDone = { isError: true, message: msg.errors.join("; ") };
+        turnDone = { isError: true, message: msg.errors.join(ERROR_LIST_DELIMITER) };
       }
       break;
     }
@@ -175,7 +182,7 @@ export async function routeMessage(
   // Insert history in database
   if (historyText !== null) {
     writes.push(
-      historyRepo.insertMessage(session.sessionId, "assistant", historyText),
+      historyRepo.insertMessage(session.sessionId, MESSAGE_ROLE.ASSISTANT, historyText),
     );
   }
 
@@ -193,7 +200,7 @@ export async function routeMessage(
     sessionRepo.touchLastActivity(session.sessionId).catch((err) => {
       logger.warn(
         { err, sessionId: session.sessionId },
-        "Last Activity failed",
+        ERROR_MESSAGES.LAST_ACTIVITY_FAILED_LOG,
       );
     });
   }

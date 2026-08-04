@@ -7,8 +7,13 @@ import type {
 } from "@anthropic-ai/claude-agent-sdk";
 import { config } from "../config/env.js";
 import { ClaudeSdkError } from "../lib/errors.js";
+import {
+  ERROR_MESSAGES,
+  PERMISSION_MODE,
+  SPAWN_MODE,
+} from "../constants/index.js";
 
-export type SpawnMode = "fresh" | "resume";
+export type SpawnMode = (typeof SPAWN_MODE)[keyof typeof SPAWN_MODE];
 
 // Claude Agent SDK query for a session, either starting fresh or resuming.
 export const spawnQuery = (
@@ -21,10 +26,10 @@ export const spawnQuery = (
     return query({
       prompt,
       options: {
-        ...(mode === "fresh" ? { sessionId } : { resume: sessionId }),
+        ...(mode === SPAWN_MODE.FRESH ? { sessionId } : { resume: sessionId }),
         tools: config.allowedTools,
         allowedTools: config.allowedTools,
-        permissionMode: "bypassPermissions",
+        permissionMode: PERMISSION_MODE.BYPASS_PERMISSIONS,
         allowDangerouslySkipPermissions: true,
         persistSession: true,
         includePartialMessages: true,
@@ -35,7 +40,7 @@ export const spawnQuery = (
       },
     });
   } catch (err) {
-    throw new ClaudeSdkError("Failed to start the Claude SDK session", { cause: err });
+    throw new ClaudeSdkError(ERROR_MESSAGES.FAILED_TO_START_SDK_SESSION, { cause: err });
   }
 };
 

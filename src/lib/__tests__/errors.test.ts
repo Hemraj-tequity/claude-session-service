@@ -15,7 +15,6 @@ import {
   buildErrorResponse,
   normalizeError,
   fastifyErrorHandler,
-  fastifyNotFoundHandler,
 } from '../errors.js';
 
 describe('AppError subclasses', () => {
@@ -211,25 +210,6 @@ describe('fastifyErrorHandler', () => {
         status: false,
         type: 'INTERNAL_ERROR',
         message: 'An unexpected error occurred',
-        timestamp: expect.any(String) as string,
-      },
-    });
-  });
-});
-
-describe('fastifyNotFoundHandler', () => {
-  it('sends a standardized ROUTE_NOT_FOUND body for unmatched routes', () => {
-    const { reply, code, send } = fakeReply();
-    const request = { method: 'GET', url: '/nope' } as unknown as FastifyRequest;
-
-    fastifyNotFoundHandler(request, reply);
-
-    expect(code).toHaveBeenCalledWith(404);
-    expect(send).toHaveBeenCalledWith({
-      error: {
-        status: false,
-        type: 'ROUTE_NOT_FOUND',
-        message: 'Route GET /nope not found',
         timestamp: expect.any(String) as string,
       },
     });

@@ -1,6 +1,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { Prisma } from "@prisma/client";
 import { ZodError, treeifyError } from "zod";
+import { ERROR_CODES, ERROR_MESSAGES, HTTP_STATUS } from "../constants/index.js";
 
 export interface AppErrorOptions {
   cause?: unknown;
@@ -33,30 +34,30 @@ abstract class ConfigurableTypeError extends AppError {
 // ---------------------------------------------------------------------------
 
 export class ValidationError extends AppError {
-  readonly type = "VALIDATION_ERROR";
-  readonly statusCode = 400;
+  readonly type = ERROR_CODES.VALIDATION_ERROR;
+  readonly statusCode = HTTP_STATUS.BAD_REQUEST;
 }
 
 export class UnauthorizedError extends AppError {
-  readonly type = "UNAUTHORIZED";
-  readonly statusCode = 401;
+  readonly type = ERROR_CODES.UNAUTHORIZED;
+  readonly statusCode = HTTP_STATUS.UNAUTHORIZED;
 }
 
 export class PersistenceError extends AppError {
-  readonly type = "DATABASE_ERROR";
-  readonly statusCode = 500;
+  readonly type = ERROR_CODES.DATABASE_ERROR;
+  readonly statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR;
 }
 
 export class ChunkError extends AppError {
-  readonly type = "CHUNK_ERROR";
-  readonly statusCode = 500;
+  readonly type = ERROR_CODES.CHUNK_ERROR;
+  readonly statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR;
 }
 
 export class InternalServerError extends AppError {
-  readonly type = "INTERNAL_ERROR";
-  readonly statusCode = 500;
+  readonly type = ERROR_CODES.INTERNAL_ERROR;
+  readonly statusCode = HTTP_STATUS.INTERNAL_SERVER_ERROR;
 
-  constructor(message = "An unexpected error occurred", options?: AppErrorOptions) {
+  constructor(message = ERROR_MESSAGES.DEFAULT_INTERNAL_ERROR, options?: AppErrorOptions) {
     super(message, options);
   }
 }
@@ -66,17 +67,17 @@ export class InternalServerError extends AppError {
 // ---------------------------------------------------------------------------
 
 export class NotFoundError extends ConfigurableTypeError {
-  readonly statusCode = 404;
+  readonly statusCode = HTTP_STATUS.NOT_FOUND;
 
-  constructor(message: string, type = "NOT_FOUND", options?: AppErrorOptions) {
+  constructor(message: string, type: string = ERROR_CODES.NOT_FOUND, options?: AppErrorOptions) {
     super(message, type, options);
   }
 }
 
 export class ConflictError extends ConfigurableTypeError {
-  readonly statusCode = 409;
+  readonly statusCode = HTTP_STATUS.CONFLICT;
 
-  constructor(message: string, type = "CONFLICT", options?: AppErrorOptions) {
+  constructor(message: string, type: string = ERROR_CODES.CONFLICT, options?: AppErrorOptions) {
     super(message, type, options);
   }
 }
@@ -94,14 +95,18 @@ export class ClaudeSdkError extends AppError {
     options: AppErrorOptions & { type?: string; statusCode?: number } = {},
   ) {
     super(message, options);
-    this.type = options.type ?? "CLAUDE_SDK_ERROR";
-    this.statusCode = options.statusCode ?? 502;
+    this.type = options.type ?? ERROR_CODES.CLAUDE_SDK_ERROR;
+    this.statusCode = options.statusCode ?? HTTP_STATUS.BAD_GATEWAY;
   }
 }
 
 export class ClaudeAuthError extends ClaudeSdkError {
   constructor(message: string, options?: AppErrorOptions) {
-    super(message, { ...options, type: "CLAUDE_AUTH_ERROR", statusCode: 401 });
+    super(message, {
+      ...options,
+      type: ERROR_CODES.CLAUDE_AUTH_ERROR,
+      statusCode: HTTP_STATUS.UNAUTHORIZED,
+    });
   }
 }
 
@@ -146,25 +151,25 @@ function isPrismaError(err: unknown): boolean {
 
 function hasClientStatusCode(err: unknown): err is { statusCode: number } {
   const statusCode = (err as { statusCode?: unknown })?.statusCode;
-  return typeof statusCode === "number" && statusCode < 500;
+  return typeof statusCode === "number" && statusCode < HTTP_STATUS.INTERNAL_SERVER_ERROR;
 }
 
 export function normalizeError(err: unknown): AppError {
   if (err instanceof AppError) return err;
 
   if (err instanceof ZodError) {
-    return new ValidationError("Malformed request body", {
+    return new ValidationError(ERROR_MESSAGES.MALFORMED_REQUEST_BODY, {
       cause: err,
       logDetails: treeifyError(err),
     });
   }
 
   if (isPrismaError(err)) {
-    return new PersistenceError("A database error occurred", { cause: err });
+    return new PersistenceError(ERROR_MESSAGES.DATABASE_ERROR, { cause: err });
   }
 
   if (hasClientStatusCode(err)) {
-    const message = err instanceof Error ? err.message : "Invalid request";
+    const message = err instanceof Error ? err.message : ERROR_MESSAGES.INVALID_REQUEST;
     return new ValidationError(message, { cause: err });
   }
 
@@ -184,7 +189,7 @@ export function fastifyErrorHandler(
 
   request.log.error(
     { err, type: appError.type, statusCode: appError.statusCode, logDetails: appError.logDetails },
-    "request failed",
+    ERROR_MESSAGES.REQUEST_FAILED_LOG,
   );
 
   reply.code(appError.statusCode).send(buildErrorResponse(appError));

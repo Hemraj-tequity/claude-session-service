@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "../lib/prisma.js";
 import { withRetry } from "../lib/retry.js";
+import { NO_TRANSCRIPT_SEQUENCE } from "../constants/index.js";
 
 export interface TranscriptRow {
   id: number;
@@ -41,7 +42,7 @@ export async function maxSequence(sessionId: string): Promise<number> {
     where: { sessionId },
     _max: { sequence: true },
   });
-  return result._max.sequence ?? -1;
+  return result._max.sequence ?? NO_TRANSCRIPT_SEQUENCE;
 }
 
 // Fetches transcript rows for a session with a sequence number greater than the given value.

@@ -338,7 +338,7 @@ describe('routeMessage', () => {
 
     expect(loggerMock.warn).toHaveBeenCalledWith(
       { err, sessionId: 's1' },
-      'touchLastActivity failed (non-fatal)',
+      'Last Activity failed',
     );
   });
 });

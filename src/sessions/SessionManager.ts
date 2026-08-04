@@ -24,9 +24,19 @@ import { spawnQuery, type SpawnMode } from "../sdk/claudeClient.js";
 import { PushQueue } from "./inputQueue.js";
 import { routeMessage, translateMessage } from "./messageRouter.js";
 import { createDeferred, type ActiveSession } from "./types.js";
+import {
+  DEFAULT_HEARTBEAT_INTERVAL_MS,
+  ERROR_CODES,
+  ERROR_MESSAGES,
+  MESSAGE_ROLE,
+  NO_TRANSCRIPT_SEQUENCE,
+  SESSION_STATUS,
+  SPAWN_MODE,
+  SSE_EVENT_TYPE,
+} from "../constants/index.js";
 
 /** How often to send an SSE heartbeat comment while a reader is attached but idle (no turn in flight). */
-const HEARTBEAT_INTERVAL_MS = 15_000;
+const HEARTBEAT_INTERVAL_MS = DEFAULT_HEARTBEAT_INTERVAL_MS;
 
 const activeSessions = new Map<string, ActiveSession>();
 
@@ -85,8 +95,8 @@ function takeOverReader(session: ActiveSession, newReader: FastifyReply): void {
   if (session.currentReader && session.currentReader !== newReader) {
     closeReader(
       session.currentReader,
-      makeSseEvent("error", {
-        content: "Session attached from elsewhere; closing this stream.",
+      makeSseEvent(SSE_EVENT_TYPE.ERROR, {
+        content: ERROR_MESSAGES.SESSION_ATTACHED_ELSEWHERE,
       }),
     );
   }
@@ -113,7 +123,7 @@ async function consumeAgentMessageStream(
         sessionRepo.markSdkStarted(session.sessionId).catch((err) => {
           logger.warn(
             { err, sessionId: session.sessionId },
-            "markSdkStarted failed (non-fatal)",
+            ERROR_MESSAGES.MARK_SDK_STARTED_FAILED_LOG,
           );
         });
       }
@@ -125,7 +135,7 @@ async function consumeAgentMessageStream(
         await terminateWithError(
           session,
           new PersistenceError(
-            "Durable write failed; session stopped to avoid running ahead of persistence.",
+            ERROR_MESSAGES.DURABLE_WRITE_FAILED,
             { cause: outcome.persistFailed },
           ),
         );
@@ -134,7 +144,7 @@ async function consumeAgentMessageStream(
       if (outcome.authError) {
         await terminateWithError(
           session,
-          new ClaudeAuthError("Host Claude authentication failed or expired."),
+          new ClaudeAuthError(ERROR_MESSAGES.CLAUDE_AUTH_FAILED),
         );
         return;
       }
@@ -146,11 +156,11 @@ async function consumeAgentMessageStream(
   } catch (err) {
     logger.error(
       { err, sessionId: session.sessionId },
-      "pumpMessages loop crashed",
+      ERROR_MESSAGES.PUMP_MESSAGES_CRASHED_LOG,
     );
     await terminateWithError(
       session,
-      new ChunkError("The session process ended unexpectedly.", { cause: err }),
+      new ChunkError(ERROR_MESSAGES.SESSION_PROCESS_ENDED, { cause: err }),
     );
   }
 }
@@ -170,7 +180,7 @@ async function terminateWithError(
   if (session.currentReader) {
     closeReader(
       session.currentReader,
-      makeSseEvent("error", { content: error.message, code: error.type }),
+      makeSseEvent(SSE_EVENT_TYPE.ERROR, { content: error.message, code: error.type }),
     );
     session.currentReader = null;
   }
@@ -178,10 +188,10 @@ async function terminateWithError(
   session.query?.close();
   activeSessions.delete(session.sessionId);
 
-  await sessionRepo.updateStatus(session.sessionId, "error").catch((err) => {
+  await sessionRepo.updateStatus(session.sessionId, SESSION_STATUS.ERROR).catch((err) => {
     logger.error(
       { err, sessionId: session.sessionId },
-      "Failed to mark session error after termination (best-effort)",
+      ERROR_MESSAGES.MARK_SESSION_ERROR_FAILED_LOG,
     );
   });
 
@@ -198,21 +208,24 @@ async function getOrStartLiveSession(
 
   const row = await sessionRepo.findById(sessionId);
   if (!row)
-    throw new NotFoundError(`Session ${sessionId} not found`, "SESSION_NOT_FOUND");
-  if (row.status !== "running") {
-    throw new ConflictError(`Session ${sessionId} is ${row.status}`, "SESSION_STOPPED");
+    throw new NotFoundError(ERROR_MESSAGES.sessionNotFound(sessionId), ERROR_CODES.SESSION_NOT_FOUND);
+  if (row.status !== SESSION_STATUS.RUNNING) {
+    throw new ConflictError(
+      ERROR_MESSAGES.sessionStopped(sessionId, row.status),
+      ERROR_CODES.SESSION_STOPPED,
+    );
   }
 
   const session = existing ?? createIdleSessionState(sessionId);
   activeSessions.set(sessionId, session);
 
-  const mode: SpawnMode = row.sdkStarted ? "resume" : "fresh";
-  if (mode === "resume") {
+  const mode: SpawnMode = row.sdkStarted ? SPAWN_MODE.RESUME : SPAWN_MODE.FRESH;
+  if (mode === SPAWN_MODE.RESUME) {
     session.seq = (await transcriptRepo.maxSequence(sessionId)) + 1;
   }
 
   session.query = spawnQuery(sessionId, mode, session.inputQueue, claudeToken);
-  void consumeAgentMessageStream(session, mode === "fresh");
+  void consumeAgentMessageStream(session, mode === SPAWN_MODE.FRESH);
 
   return session;
 }
@@ -244,10 +257,10 @@ export async function submitInput(
   const session = await getOrStartLiveSession(sessionId, claudeToken);
 
   try {
-    await historyRepo.insertMessage(sessionId, "user", content);
+    await historyRepo.insertMessage(sessionId, MESSAGE_ROLE.USER, content);
   } catch (err) {
     throw new PersistenceError(
-      "Failed to durably record the prompt; not forwarded.",
+      ERROR_MESSAGES.PROMPT_PERSIST_FAILED,
       { cause: err },
     );
   }
@@ -268,7 +281,7 @@ export async function submitInput(
   // Queue User Message
   session.inputQueue.push({
     type: "user",
-    message: { role: "user", content },
+    message: { role: MESSAGE_ROLE.USER, content },
     parent_tool_use_id: null,
   });
 
@@ -277,7 +290,7 @@ export async function submitInput(
 
   // Close SSE
   if (session.currentReader === reply) {
-    closeReader(reply, makeSseEvent("done", {}));
+    closeReader(reply, makeSseEvent(SSE_EVENT_TYPE.DONE, {}));
     session.currentReader = null;
   }
 }
@@ -287,8 +300,8 @@ async function replayPersistedTranscript(
   sessionId: string,
   reply: FastifyReply,
 ): Promise<void> {
-  // Give all rows whose sequence number is greater than -1
-  const rows = await transcriptRepo.findSince(sessionId, -1);
+  // Give all rows whose sequence number is greater than NO_TRANSCRIPT_SEQUENCE
+  const rows = await transcriptRepo.findSince(sessionId, NO_TRANSCRIPT_SEQUENCE);
 
   // Translate each row's entry into Claude-formatted events.
   for (const row of rows) {
@@ -309,13 +322,13 @@ export async function attach(
 ): Promise<void> {
   const row = await sessionRepo.findById(sessionId);
   if (!row)
-    throw new NotFoundError(`Session ${sessionId} not found`, "SESSION_NOT_FOUND");
+    throw new NotFoundError(ERROR_MESSAGES.sessionNotFound(sessionId), ERROR_CODES.SESSION_NOT_FOUND);
 
-  if (row.status !== "running") {
+  if (row.status !== SESSION_STATUS.RUNNING) {
     startSse(reply);
     await replayPersistedTranscript(sessionId, reply);
     // Sends a final "done" event.
-    closeReader(reply, makeSseEvent("done", {}));
+    closeReader(reply, makeSseEvent(SSE_EVENT_TYPE.DONE, {}));
     return;
   }
 
@@ -332,7 +345,7 @@ export async function stop(
 ): Promise<{ session_id: string; status: string }> {
   const row = await sessionRepo.findById(sessionId);
   if (!row)
-    throw new NotFoundError(`Session ${sessionId} not found`, "SESSION_NOT_FOUND");
+    throw new NotFoundError(ERROR_MESSAGES.sessionNotFound(sessionId), ERROR_CODES.SESSION_NOT_FOUND);
 
   const session = activeSessions.get(sessionId);
   if (session) {
@@ -341,7 +354,7 @@ export async function stop(
       await session.query?.interrupt().catch(() => {});
     }
     if (session.currentReader) {
-      closeReader(session.currentReader, makeSseEvent("done", {}));
+      closeReader(session.currentReader, makeSseEvent(SSE_EVENT_TYPE.DONE, {}));
       session.currentReader = null;
     }
     session.query?.close();
@@ -350,6 +363,6 @@ export async function stop(
     activeSessions.delete(sessionId);
   }
 
-  await sessionRepo.updateStatus(sessionId, "stopped");
-  return { session_id: sessionId, status: "stopped" };
+  await sessionRepo.updateStatus(sessionId, SESSION_STATUS.STOPPED);
+  return { session_id: sessionId, status: SESSION_STATUS.STOPPED };
 }

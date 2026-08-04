@@ -157,7 +157,7 @@ describe("buildApp", () => {
 
       expect(res.statusCode).toBe(404);
       expect(res.json()).toMatchObject({
-        error: { status: false, type: "ROUTE_NOT_FOUND" },
+        error: "Not Found",
       });
     });
   });

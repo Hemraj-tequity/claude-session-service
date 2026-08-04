@@ -4,7 +4,12 @@ import { InputBodySchema } from "../../schemas/sessions.schema.js";
 import { ValidationError } from "../../lib/errors.js";
 import { extractClaudeToken } from "../../lib/auth.js";
 import * as SessionManager from "../../sessions/SessionManager.js";
-import { sessionIdParamSchema } from "../../utils/constant.js";
+import {
+  ERROR_MESSAGES,
+  HTTP_STATUS,
+  ROUTES,
+  sessionIdParamSchema,
+} from "../../constants/index.js";
 
 // Registers the session lifecycle routes (create, submit input, attach, stop) with their auth hook.
 export const registerSessionRoutes = (app: FastifyInstance): void => {
@@ -14,19 +19,19 @@ export const registerSessionRoutes = (app: FastifyInstance): void => {
     done();
   });
 
-  app.post("/sessions", async (_request, reply) => {
+  app.post(ROUTES.SESSIONS, async (_request, reply) => {
     const result = await SessionManager.createSession();
-    reply.code(201).send(result);
+    reply.code(HTTP_STATUS.CREATED).send(result);
   });
 
   app.post<{ Params: { sessionId: string }; Body: { content: string } }>(
-    "/sessions/:sessionId/input",
+    ROUTES.SESSION_INPUT,
     { schema: { params: sessionIdParamSchema } },
     async (request, reply) => {
       const parsed = InputBodySchema.safeParse(request.body);
 
       if (!parsed.success) {
-        throw new ValidationError("Body must be { content: string }", {
+        throw new ValidationError(ERROR_MESSAGES.INVALID_INPUT_BODY, {
           logDetails: treeifyError(parsed.error),
         });
       }
@@ -41,7 +46,7 @@ export const registerSessionRoutes = (app: FastifyInstance): void => {
   );
 
   app.get<{ Params: { sessionId: string } }>(
-    "/sessions/:sessionId/attach",
+    ROUTES.SESSION_ATTACH,
     { schema: { params: sessionIdParamSchema } },
     async (request, reply) => {
       await SessionManager.attach(
@@ -53,7 +58,7 @@ export const registerSessionRoutes = (app: FastifyInstance): void => {
   );
 
   app.delete<{ Params: { sessionId: string } }>(
-    "/sessions/:sessionId",
+    ROUTES.SESSION_BY_ID,
     { schema: { params: sessionIdParamSchema } },
     async (request, reply) => {
       const result = await SessionManager.stop(request.params.sessionId);

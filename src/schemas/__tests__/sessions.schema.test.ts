@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { InputBodySchema, UUID_PATTERN } from '../sessions.schema.js';
+import { InputBodySchema } from '../sessions.schema.js';
+import { UUID_PATTERN } from '../../constants/index.js';
 
 describe('InputBodySchema', () => {
   it('accepts a non-empty content string', () => {

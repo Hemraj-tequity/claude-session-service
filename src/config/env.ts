@@ -1,14 +1,29 @@
 import "dotenv/config";
 import { z } from "zod";
+import {
+  DEFAULT_PORT,
+  ERROR_MESSAGES,
+  LOG_LEVELS,
+  NODE_ENV_VALUES,
+} from "../constants/index.js";
 
 const EnvSchema = z.object({
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
-  PORT: z.coerce.number().int().positive().default(3000),
-  NODE_ENV: z.enum(["development", "production"]).default("development"),
+  DATABASE_URL: z.string().min(1, ERROR_MESSAGES.DATABASE_URL_REQUIRED),
+  PORT: z.coerce.number().int().positive().default(DEFAULT_PORT),
+  NODE_ENV: z
+    .enum([NODE_ENV_VALUES.DEVELOPMENT, NODE_ENV_VALUES.PRODUCTION])
+    .default(NODE_ENV_VALUES.DEVELOPMENT),
   ALLOWED_TOOLS: z.string().default(""),
   LOG_LEVEL: z
-    .enum(["fatal", "error", "warn", "info", "debug", "trace"])
-    .default("info"),
+    .enum([
+      LOG_LEVELS.FATAL,
+      LOG_LEVELS.ERROR,
+      LOG_LEVELS.WARN,
+      LOG_LEVELS.INFO,
+      LOG_LEVELS.DEBUG,
+      LOG_LEVELS.TRACE,
+    ])
+    .default(LOG_LEVELS.INFO),
 });
 
 // Splits a comma-separated env value into trimmed, non-empty entries.
@@ -24,7 +39,7 @@ function loadEnvironmentConfig() {
   const parsed = EnvSchema.safeParse(process.env);
   if (!parsed.success) {
     console.error(
-      "Invalid environment configuration:",
+      ERROR_MESSAGES.INVALID_ENV_CONFIG_LOG,
       z.treeifyError(parsed.error),
     );
     process.exit(1);
