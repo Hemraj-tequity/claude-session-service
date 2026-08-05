@@ -184,13 +184,21 @@ describe('SessionManager', () => {
       });
     });
 
-    it('throws SESSION_STOPPED when the session is not running', async () => {
+    it('revives a stopped session by setting it back to running before spawning', async () => {
       const { submitInput } = await freshSessionManager();
-      sessionRepoMock.findById.mockResolvedValue(runningRow({ status: 'stopped' }));
+      sessionRepoMock.findById.mockResolvedValue(runningRow({ status: 'stopped', sdkStarted: false }));
+      const fq = createFakeQuery();
+      spawnQueryMock.mockReturnValue(fq.query);
+      routeMessageMock.mockResolvedValue({ turnDone: { isError: false, message: 'ok' } });
 
-      await expect(submitInput('s1', 'hi', fakeReply(), 'token')).rejects.toMatchObject({
-        type: 'SESSION_STOPPED',
-      });
+      const reply = fakeReply();
+      const promise = submitInput('s1', 'hi', reply, 'token');
+      await vi.waitFor(() => expect(startSseMock).toHaveBeenCalledWith(reply));
+      fq.push({ type: 'result', subtype: 'success', result: 'ok', num_turns: 1 });
+      await promise;
+
+      expect(sessionRepoMock.updateStatus).toHaveBeenCalledWith('s1', 'running');
+      expect(spawnQueryMock).toHaveBeenCalledWith('s1', 'fresh', expect.anything(), 'token');
     });
 
     it('spawns fresh when the session has never started the SDK, streams to completion', async () => {
@@ -274,7 +282,9 @@ describe('SessionManager', () => {
     it('logs (but does not throw) when marking the session errored fails during termination', async () => {
       const { submitInput } = await freshSessionManager();
       sessionRepoMock.findById.mockResolvedValue(runningRow({ sdkStarted: false }));
-      sessionRepoMock.updateStatus.mockRejectedValue(new Error('db unreachable'));
+      sessionRepoMock.updateStatus.mockImplementation((_id: string, status: string) =>
+        status === 'error' ? Promise.reject(new Error('db unreachable')) : Promise.resolve(undefined),
+      );
       const fq = createFakeQuery();
       spawnQueryMock.mockReturnValue(fq.query);
 

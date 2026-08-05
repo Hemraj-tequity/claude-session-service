@@ -5,7 +5,6 @@ import { logger } from "../lib/logger.js";
 import {
   type AppError,
   NotFoundError,
-  ConflictError,
   PersistenceError,
   ClaudeAuthError,
   ChunkError,
@@ -209,12 +208,6 @@ async function getOrStartLiveSession(
   const row = await sessionRepo.findById(sessionId);
   if (!row)
     throw new NotFoundError(ERROR_MESSAGES.sessionNotFound(sessionId), ERROR_CODES.SESSION_NOT_FOUND);
-  if (row.status !== SESSION_STATUS.RUNNING) {
-    throw new ConflictError(
-      ERROR_MESSAGES.sessionStopped(sessionId, row.status),
-      ERROR_CODES.SESSION_STOPPED,
-    );
-  }
 
   const session = existing ?? createIdleSessionState(sessionId);
   activeSessions.set(sessionId, session);
@@ -254,6 +247,7 @@ export async function submitInput(
   claudeToken: string,
 ): Promise<void> {
   // Get and Create a Claude Session
+  await sessionRepo.updateStatus(sessionId, SESSION_STATUS.RUNNING);
   const session = await getOrStartLiveSession(sessionId, claudeToken);
 
   try {
