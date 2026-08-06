@@ -247,8 +247,9 @@ export async function submitInput(
   claudeToken: string,
 ): Promise<void> {
   // Get and Create a Claude Session
-  await sessionRepo.updateStatus(sessionId, SESSION_STATUS.RUNNING);
   const session = await getOrStartLiveSession(sessionId, claudeToken);
+
+  await sessionRepo.updateStatus(sessionId, SESSION_STATUS.RUNNING);
 
   try {
     await historyRepo.insertMessage(sessionId, MESSAGE_ROLE.USER, content);
